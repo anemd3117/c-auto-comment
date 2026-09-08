@@ -1,0 +1,21 @@
+# Build output & binary executables
+output/
+*.exe
+*.o
+*.obj
+.auto-comment-output.exe
+main.exe
+
+# Dependencies
+node_modules/
+
+# OS & Temporary files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+tmp/
+scratch/
+
+# Keep pre-packaged VSIX for zero-build installation on other PCs
+!auto-comment-extension/auto-comment-after-run-0.0.6.vsix
