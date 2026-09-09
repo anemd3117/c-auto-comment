@@ -138,6 +138,10 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "vsix=auto-comment-after-run-$VERSION.vsix" >> "$GITHUB_OUTPUT"
 
+      - name: Validate extension JavaScript
+        shell: bash
+        run: node --check extension.js
+
       - name: Package VSIX
         shell: bash
         run: npx --yes @vscode/vsce package --out "${{ steps.version.outputs.vsix }}"
