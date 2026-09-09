@@ -1,119 +1,63 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "type": "process",
-            "label": "C: stop active executable",
-            "command": "cmd.exe",
-            "args": [
-                "/c",
-                "taskkill /F /IM ${fileBasenameNoExtension}.exe /T >nul 2>&1 & exit /b 0"
-            ],
-            "problemMatcher": [],
-            "presentation": {
-                "reveal": "never",
-                "echo": false
-            }
-        },
-        {
-            "type": "shell",
-            "label": "C: gcc build active file",
-            "command": "C:/msys64/ucrt64/bin/gcc.exe",
-            "args": [
-                "-Wall",
-                "-finput-charset=UTF-8",
-                "-fexec-charset=UTF-8",
-                "-Wextra",
-                "-g",
-                "${file}",
-                "-o",
-                "${workspaceFolder}\\output\\${fileBasenameNoExtension}.exe"
-            ],
-            "options": {
-                "cwd": "${fileDirname}"
-            },
-            "dependsOn": "C: stop active executable",
-            "dependsOrder": "sequence",
-            "problemMatcher": [
-                "$gcc"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            },
-            "detail": "gcc로 현재 C 파일 빌드"
-        },
-        {
-            "type": "process",
-            "label": "C/C++: 컴파일 및 자동 주석 추가 (스마트 빌드)",
-            "command": "powershell.exe",
-            "args": [
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                "${workspaceFolder}/scripts/smart_build.ps1",
-                "-FilePath",
-                "${file}",
-                "-WorkspaceFolder",
-                "${workspaceFolder}"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "dependsOn": "C: stop active executable",
-            "dependsOrder": "sequence",
-            "problemMatcher": [
-                "$gcc"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "detail": "C 소스 및 헤더 파일을 컴파일/검증하고 학습용 주석을 자동으로 추가합니다."
-        },
-        {
-            "type": "cppbuild",
-            "label": "C/C++: gcc.exe 활성 파일 빌드",
-            "command": "C:/msys64/ucrt64/bin/gcc.exe",
-            "args": [
-                "-fdiagnostics-color=always",
-                "-finput-charset=UTF-8",
-                "-fexec-charset=UTF-8",
-                "-g",
-                "${file}",
-                "-o",
-                "${workspaceFolder}\\output\\${fileBasenameNoExtension}.exe"
-            ],
-            "options": {
-                "cwd": "C:/msys64/ucrt64/bin"
-            },
-            "dependsOn": "C: stop active executable",
-            "dependsOrder": "sequence",
-            "problemMatcher": [
-                "$gcc"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            },
-            "detail": "디버거에서 생성된 기본 작업입니다."
-        },
-        {
-            "type": "shell",
-            "label": "C: run active file only",
-            "command": "chcp.com 65001 > $null; $utf8 = [System.Text.UTF8Encoding]::new(); [Console]::InputEncoding = $utf8; [Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8; & .\\${fileBasenameNoExtension}.exe",
-            "options": {
-                "cwd": "${workspaceFolder}\\output"
-            },
-            "dependsOn": "C: gcc build active file",
-            "dependsOrder": "sequence",
-            "presentation": {
-                "echo": false,
-                "reveal": "always",
-                "focus": true,
-                "panel": "dedicated"
-            },
-            "problemMatcher": []
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "process",
+      "label": "C/C++: Smart Build + Auto Comment",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/smart_build.ps1",
+        "-FilePath",
+        "${file}",
+        "-WorkspaceFolder",
+        "${workspaceFolder}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8"
         }
-    ]
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "detail": "Automatically detects or installs the compiler, builds the active C/C++ file, and adds learning comments."
+    },
+    {
+      "type": "process",
+      "label": "C/C++: Run active output",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "& \"${workspaceFolder}\\output\\${fileBasenameNoExtension}.exe\""
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/output",
+        "env": {
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8"
+        }
+      },
+      "dependsOn": "C/C++: Smart Build + Auto Comment",
+      "dependsOrder": "sequence",
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    }
+  ]
 }
