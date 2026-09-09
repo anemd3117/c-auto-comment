@@ -74,9 +74,11 @@ try {
     $root = Split-Path $PSScriptRoot -Parent
     $packageJson = Join-Path $root 'auto-comment-extension\package.json'
     $bootstrap = Join-Path $PSScriptRoot 'bootstrap.ps1'
+    $configure = Join-Path $PSScriptRoot 'configure-vscode.ps1'
 
     if (-not (Test-Path $packageJson)) { throw "package.json was not found: $packageJson" }
     if (-not (Test-Path $bootstrap)) { throw "bootstrap.ps1 was not found: $bootstrap" }
+    if (-not (Test-Path $configure)) { throw "configure-vscode.ps1 was not found: $configure" }
 
     $package = Get-Content -Raw -LiteralPath $packageJson | ConvertFrom-Json
     $version = [string]$package.version
@@ -85,17 +87,32 @@ try {
     Write-Host '===================================================='
     Write-Host "[Auto Comment] Portable installer v$version"
     Write-Host '===================================================='
-    Write-Info 'Checking the VS Code host...'
+    Write-Info 'Checking the VS Code host and portable support tools...'
 
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Components VSCode
     if ($LASTEXITCODE -ne 0) {
-        throw "Dependency bootstrap failed (exit code $LASTEXITCODE)."
+        throw "VS Code bootstrap failed (exit code $LASTEXITCODE)."
+    }
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Components Ripgrep
+    if ($LASTEXITCODE -ne 0) {
+        throw "ripgrep bootstrap failed (exit code $LASTEXITCODE)."
     }
 
     Refresh-ProcessPath
     $code = Find-VSCodeCli
     if (-not $code) { throw 'VS Code CLI could not be resolved after bootstrap.' }
     Write-Ok "VS Code CLI resolved: $code"
+
+    $rg = Join-Path $env:LOCALAPPDATA 'Programs\ripgrep\rg.exe'
+    if (-not (Test-Path $rg)) {
+        throw "Stable ripgrep executable was not found after bootstrap: $rg"
+    }
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $configure -CodePath $code -RipgrepPath $rg
+    if ($LASTEXITCODE -ne 0) {
+        throw "VS Code support repair failed (exit code $LASTEXITCODE)."
+    }
 
     $expected = "local.auto-comment-after-run@$version"
     $installedBefore = & $code --list-extensions --show-versions 2>&1

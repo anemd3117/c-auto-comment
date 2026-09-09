@@ -2,20 +2,23 @@
 
 Portable VS Code tooling that validates or runs supported source files and adds beginner-friendly Korean learning comments automatically.
 
-## v0.0.11
+## v0.0.12
 
-This release focuses on Python portability and lower startup/install latency on external Windows PCs.
+This release adds the external-PC VS Code repairs discovered during real installation testing.
 
-- Python is now a first-class bootstrap component.
-- Python detection validates a real working runtime instead of trusting only a `python.exe` name.
-- Supports `pymanager`, `py`, `python`, and `python3` launchers.
-- Missing Python is installed through the official Python Install Manager workflow on Windows.
-- `.py` and `.pyw` files are detected by file extension even when a fresh VS Code installation reports the document as plain text.
-- The one-click installer now prepares only VS Code. GCC, Node.js, and Python are installed lazily only when that language needs them.
-- Executable discovery is cached to avoid repeatedly starting PowerShell just to refresh PATH.
-- The extension no longer activates on every VS Code startup. It activates only for supported languages or Auto Comment commands.
-- Re-running the installer skips the VSIX download when the exact version is already installed.
-- Operational logs remain English UTF-8. Generated learning comments remain Korean.
+- ripgrep is now a first-class bootstrap component.
+- Existing WinGet ripgrep installs are discovered even when the `rg` alias is missing.
+- ripgrep is copied to a stable per-user location:
+  `%LOCALAPPDATA%\Programs\ripgrep\rg.exe`
+- That stable directory is added to the user PATH.
+- Todo Tree is installed if missing and configured directly with:
+  `todo-tree.ripgrep.ripgrep`
+- Microsoft Python and Pylance extensions are installed if missing.
+- Unsupported/failing Tabnine and legacy IntelliCode extensions are removed when present.
+- The obsolete `tabnine.experimentalAutoImports` setting is removed.
+- VS Code user settings are backed up before the Todo Tree repair is applied.
+- The repository debugger configuration no longer hardcodes `C:\msys64\...`.
+- Python runtime bootstrap and lazy dependency loading from v0.0.11 are preserved.
 
 ## One-click installation on Windows
 
@@ -25,16 +28,21 @@ cd c-auto-comment
 .\install-extension.bat
 ```
 
-Initial installation is intentionally lightweight:
+The installer now performs:
 
 ```text
-Installer
-  -> detect/install VS Code only
-  -> download prebuilt VSIX
-  -> install and verify extension
+VS Code host
+  -> detect/install VS Code
+  -> detect/install ripgrep
+  -> normalize rg.exe to a stable per-user path
+  -> repair Todo Tree
+  -> install Python + Pylance VS Code support
+  -> clean unsupported legacy AI extensions
+  -> download the matching prebuilt Auto Comment VSIX
+  -> install and verify the exact extension version
 ```
 
-Language runtimes are prepared only when needed:
+Language runtimes remain lazy:
 
 ```text
 Open/run C or C++
@@ -43,28 +51,43 @@ Open/run C or C++
 
 Open/run Python
   -> validate pymanager / py / python / python3
-  -> install Python only if no working runtime exists
+  -> install Python runtime only if no working interpreter exists
 
 Open/run JavaScript
   -> detect Node.js
   -> install Node.js LTS only if missing
 ```
 
-This avoids forcing every external PC to install or scan every development stack during setup.
+## Todo Tree / ripgrep behavior
+
+The installer does not depend on WinGet's command alias being healthy.
+
+If ripgrep is already present under the WinGet package store but `rg` is not on PATH, the bootstrap discovers the actual executable and copies it to:
+
+```text
+%LOCALAPPDATA%\Programs\ripgrep\rg.exe
+```
+
+Todo Tree is then pointed directly to that stable executable using:
+
+```json
+"todo-tree.ripgrep.ripgrep": "<resolved stable rg.exe path>"
+```
+
+This avoids version-specific WinGet package paths in VS Code settings.
 
 ## Python behavior
 
-For Python files, Auto Comment checks for a **working interpreter**, not just a command name. This helps avoid false positives from broken PATH entries or Windows app execution aliases.
+For Python files, Auto Comment validates a working interpreter instead of trusting only a command name.
 
-The extension validates Python before compiling with:
+Supported launchers include:
 
-```text
-python -c "import sys; print(sys.executable)"
-```
+- `pymanager`
+- `py`
+- `python`
+- `python3`
 
-or the equivalent launcher form for `py` / `pymanager`.
-
-If Python is missing on Windows, the bootstrap uses the Python Install Manager and then retries runtime discovery.
+If no working Python runtime exists on Windows, the bootstrap uses the Python Install Manager and retries runtime discovery.
 
 ## Extension commands
 
