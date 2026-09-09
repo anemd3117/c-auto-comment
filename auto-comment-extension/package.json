@@ -2,7 +2,7 @@
   "name": "auto-comment-after-run",
   "displayName": "Auto Comment After Run",
   "description": "Portable C/C++ smart build and automatic beginner-friendly Korean learning comments with dependency bootstrap.",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "local",
   "license": "MIT",
   "repository": {
