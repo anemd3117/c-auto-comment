@@ -1,8 +1,8 @@
 {
   "name": "auto-comment-after-run",
   "displayName": "Auto Comment After Run",
-  "description": "Portable C/C++ smart build and automatic beginner-friendly Korean learning comments with dependency bootstrap.",
-  "version": "0.0.10",
+  "description": "Fast portable C/C++/Python/JavaScript smart build and automatic beginner-friendly Korean learning comments with lazy dependency bootstrap.",
+  "version": "0.0.11",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -19,13 +19,21 @@
   "keywords": [
     "c",
     "cpp",
+    "python",
+    "javascript",
     "gcc",
     "learning",
     "comments",
     "portable"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onLanguage:c",
+    "onLanguage:cpp",
+    "onLanguage:python",
+    "onLanguage:javascript",
+    "onCommand:autoCommentAfterRun.compileAndComment",
+    "onCommand:autoCommentAfterRun.runAndComment",
+    "onCommand:autoCommentAfterRun.commentCurrentFile"
   ],
   "main": "./extension.js",
   "scripts": {
