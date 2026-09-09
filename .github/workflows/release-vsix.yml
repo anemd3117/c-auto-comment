@@ -33,6 +33,7 @@ jobs:
           $files = @(
             'scripts\bootstrap.ps1',
             'scripts\install.ps1',
+            'scripts\configure-vscode.ps1',
             'scripts\smart_build.ps1',
             'auto-comment-extension\bootstrap.ps1'
           )
@@ -57,6 +58,7 @@ jobs:
             'install-extension.bat',
             'scripts\bootstrap.ps1',
             'scripts\install.ps1',
+            'scripts\configure-vscode.ps1',
             'scripts\smart_build.ps1',
             'auto-comment-extension\bootstrap.ps1',
             'auto-comment-extension\extension.js'
@@ -79,8 +81,8 @@ jobs:
           $extension = Get-Content -Raw 'auto-comment-extension\extension.js'
           $package = Get-Content -Raw 'auto-comment-extension\package.json' | ConvertFrom-Json
 
-          if ($bootstrap -notmatch "ValidateSet\('All', 'Toolchain', 'Node', 'VSCode', 'Python'\)") {
-            Write-Error 'Python must be a supported bootstrap component.'
+          if ($bootstrap -notmatch "ValidateSet\('All', 'Toolchain', 'Node', 'VSCode', 'Python', 'Ripgrep'\)") {
+            Write-Error 'Python and Ripgrep must be supported bootstrap components.'
             exit 1
           }
 
@@ -113,6 +115,39 @@ jobs:
             Write-Error 'Extension must not activate on every VS Code startup.'
             exit 1
           }
+
+          if ($bootstrap -notmatch 'BurntSushi\.ripgrep\.MSVC') {
+            Write-Error 'Portable ripgrep bootstrap is missing.'
+            exit 1
+          }
+
+          if ($installer -notmatch '-Components\s+Ripgrep') {
+            Write-Error 'Installer must prepare ripgrep for Todo Tree.'
+            exit 1
+          }
+
+          $configure = Get-Content -Raw 'scripts\configure-vscode.ps1'
+
+          if ($configure -notmatch 'todo-tree\.ripgrep\.ripgrep') {
+            Write-Error 'Todo Tree ripgrep setting repair is missing.'
+            exit 1
+          }
+
+          if ($configure -notmatch 'Gruntfuggly\.todo-tree') {
+            Write-Error 'Todo Tree extension setup is missing.'
+            exit 1
+          }
+
+          if ($configure -notmatch 'ms-python\.vscode-pylance') {
+            Write-Error 'Pylance setup is missing.'
+            exit 1
+          }
+
+          if ($configure -notmatch 'TabNine\.tabnine-vscode') {
+            Write-Error 'Legacy Tabnine cleanup is missing.'
+            exit 1
+          }
+
 
   package:
     needs: windows-smoke
@@ -168,5 +203,5 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Auto Comment v$VERSION" \
-              --notes "Faster lazy bootstrap, improved Python runtime discovery/installation, cached executable lookup, path-independent setup, and English UTF-8 operational logs."
+              --notes "Portable ripgrep/Todo Tree repair, Python/Pylance setup, legacy extension cleanup, path-independent debugger settings, and the fast lazy bootstrap from v0.0.11."
           fi
