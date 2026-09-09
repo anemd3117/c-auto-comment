@@ -2,11 +2,12 @@
 
 Portable VS Code tooling for C/C++ learners. The project validates or compiles C/C++ files and adds beginner-friendly Korean learning comments automatically.
 
-## v0.0.8
+## v0.0.9
 
-This release keeps the external-PC portability work from v0.0.7 and fixes the Windows batch installer success-code handling.
+This release keeps the portable bootstrap work and fixes VS Code CLI path resolution on Windows.
 
-- Fixes false `VSIX packaging failed with exit code .` errors after a successful VSIX build
+- Resolves the absolute path of `code.cmd` before installation so VS Code does not look for `Code.exe` relative to the project folder
+- Keeps the v0.0.8 batch exit-code fix
 - English UTF-8 setup/build/diagnostic logs
 - Automatic dependency detection
 - Automatic MSYS2 + UCRT64 GCC/G++ installation on Windows when missing
