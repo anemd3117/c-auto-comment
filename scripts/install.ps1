@@ -85,9 +85,9 @@ try {
     Write-Host '===================================================='
     Write-Host "[Auto Comment] Portable installer v$version"
     Write-Host '===================================================='
-    Write-Info 'Checking and installing required development tools...'
+    Write-Info 'Checking the VS Code host...'
 
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Components All
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Components VSCode
     if ($LASTEXITCODE -ne 0) {
         throw "Dependency bootstrap failed (exit code $LASTEXITCODE)."
     }
@@ -96,6 +96,15 @@ try {
     $code = Find-VSCodeCli
     if (-not $code) { throw 'VS Code CLI could not be resolved after bootstrap.' }
     Write-Ok "VS Code CLI resolved: $code"
+
+    $expected = "local.auto-comment-after-run@$version"
+    $installedBefore = & $code --list-extensions --show-versions 2>&1
+
+    if ($LASTEXITCODE -eq 0 -and ($installedBefore | Where-Object { $_.Trim() -ieq $expected })) {
+        Write-Ok "Already installed: $expected"
+        Write-Host '[READY] Auto Comment is already up to date.'
+        exit 0
+    }
 
     $fileName = "auto-comment-after-run-$version.vsix"
     $downloadDir = Join-Path ([IO.Path]::GetTempPath()) ("auto-comment-installer\" + $version)
@@ -141,7 +150,6 @@ try {
         throw "VS Code extension verification failed (exit code $LASTEXITCODE)."
     }
 
-    $expected = "local.auto-comment-after-run@$version"
     if (-not ($installed | Where-Object { $_.Trim() -ieq $expected })) {
         throw "Installation command completed, but $expected was not found in the installed extension list."
     }
