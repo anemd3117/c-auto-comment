@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('All', 'Toolchain', 'Node', 'VSCode', 'Python')]
+    [ValidateSet('All', 'Toolchain', 'Node', 'VSCode', 'Python', 'Ripgrep')]
     [string[]]$Components = @('All')
 )
 
@@ -236,6 +236,63 @@ function Find-PythonRuntime {
     }
 
     return $null
+}
+
+function Find-RipgrepExe {
+    foreach ($name in @('rg.exe', 'rg')) {
+        $rg = Find-OnPath $name
+        if ($rg -and (Test-Path $rg)) { return $rg }
+    }
+
+    $stable = Join-Path $env:LOCALAPPDATA 'Programs\ripgrep\rg.exe'
+    if (Test-Path $stable) { return $stable }
+
+    $packages = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+    if (Test-Path $packages) {
+        $rg = Get-ChildItem -Path $packages -Filter 'rg.exe' -File -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+        if ($rg -and (Test-Path $rg)) { return $rg }
+    }
+
+    return $null
+}
+
+function Ensure-Ripgrep {
+    $rg = Find-RipgrepExe
+
+    if (-not $rg) {
+        Write-Missing 'ripgrep (rg.exe)'
+        Install-WingetPackage -Id 'BurntSushi.ripgrep.MSVC'
+        $rg = Find-RipgrepExe
+    }
+
+    if (-not $rg) {
+        throw 'ripgrep installation finished, but rg.exe could not be discovered.'
+    }
+
+    $stableDir = Join-Path $env:LOCALAPPDATA 'Programs\ripgrep'
+    $stable = Join-Path $stableDir 'rg.exe'
+
+    New-Item -ItemType Directory -Path $stableDir -Force | Out-Null
+
+    if (-not ((Resolve-Path $rg).Path -ieq $stable)) {
+        Copy-Item -LiteralPath $rg -Destination $stable -Force
+    }
+
+    if (-not (Test-Path $stable)) {
+        throw 'ripgrep could not be copied to its stable user location.'
+    }
+
+    Add-UserPath $stableDir
+
+    & $stable --version *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'ripgrep was found, but rg.exe failed its execution test.'
+    }
+
+    Write-Ok "ripgrep ready: $stable"
 }
 
 function Find-MSYS2Root {
@@ -522,6 +579,7 @@ try {
     if ($all -or $Components -contains 'Node') { Ensure-Node }
     if ($all -or $Components -contains 'Python') { Ensure-Python }
     if ($all -or $Components -contains 'VSCode') { Ensure-VSCode }
+    if ($all -or $Components -contains 'Ripgrep') { Ensure-Ripgrep }
 
     Write-Host '[READY] Requested development environment components are ready.'
     exit 0
