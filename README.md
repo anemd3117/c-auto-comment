@@ -1,23 +1,21 @@
-# C/C++ Smart Build & Auto Comment
+# C/C++ / Python / JavaScript Smart Build & Auto Comment
 
-Portable VS Code tooling for C/C++ learners. The project validates or compiles C/C++ files and adds beginner-friendly Korean learning comments automatically.
+Portable VS Code tooling that validates or runs supported source files and adds beginner-friendly Korean learning comments automatically.
 
-## v0.0.10
+## v0.0.11
 
-This release removes the remaining target-PC path coupling.
+This release focuses on Python portability and lower startup/install latency on external Windows PCs.
 
-- The target PC no longer builds the VSIX with `npx`
-- The installer downloads the prebuilt VSIX from the matching GitHub Release
-- Newly installed Node.js no longer has to appear in the parent CMD session before installation can continue
-- GCC, MSYS2, Node.js, and VS Code are discovered dynamically from the current system
-- MSYS2 is no longer required to exist at a fixed `C:\msys64` location
-- The extension host refreshes the Windows Machine/User PATH after automatic dependency installation
-- The batch file is only a small launcher for the PowerShell installer
-- VSIX installation is verified with `code --list-extensions --show-versions`
-- Windows CI rejects known machine-specific paths and installer-side `npx` dependencies
-- Operational logs remain English UTF-8; generated learning comments remain Korean
-
-Automatic installs use Windows Package Manager (winget) and MSYS2 pacman.
+- Python is now a first-class bootstrap component.
+- Python detection validates a real working runtime instead of trusting only a `python.exe` name.
+- Supports `pymanager`, `py`, `python`, and `python3` launchers.
+- Missing Python is installed through the official Python Install Manager workflow on Windows.
+- `.py` and `.pyw` files are detected by file extension even when a fresh VS Code installation reports the document as plain text.
+- The one-click installer now prepares only VS Code. GCC, Node.js, and Python are installed lazily only when that language needs them.
+- Executable discovery is cached to avoid repeatedly starting PowerShell just to refresh PATH.
+- The extension no longer activates on every VS Code startup. It activates only for supported languages or Auto Comment commands.
+- Re-running the installer skips the VSIX download when the exact version is already installed.
+- Operational logs remain English UTF-8. Generated learning comments remain Korean.
 
 ## One-click installation on Windows
 
@@ -27,56 +25,57 @@ cd c-auto-comment
 .\install-extension.bat
 ```
 
-The installer:
+Initial installation is intentionally lightweight:
 
-1. Reads the extension version from `package.json`.
-2. Detects or installs the required development tools.
-3. Resolves the actual VS Code CLI path.
-4. Downloads the prebuilt VSIX from the matching GitHub Release into the Windows temp directory.
-5. Installs the VSIX using the resolved VS Code CLI.
-6. Verifies that the exact extension version is installed.
-
-The target PC does **not** need to package the VSIX locally.
-
-## Portable workspace mode
-
-You can also use the repository without installing the VSIX:
-
-```powershell
-git clone https://github.com/anemd3117/c-auto-comment.git
-code c-auto-comment
+```text
+Installer
+  -> detect/install VS Code only
+  -> download prebuilt VSIX
+  -> install and verify extension
 ```
 
-Open a `.c`, `.cpp`, `.h`, or `.hpp` file and press **Ctrl+Shift+B**. The smart build task can bootstrap missing GCC/G++ and Node.js dependencies and refresh PATH before retrying.
+Language runtimes are prepared only when needed:
+
+```text
+Open/run C or C++
+  -> detect GCC/G++
+  -> install MSYS2 UCRT64 toolchain only if missing
+
+Open/run Python
+  -> validate pymanager / py / python / python3
+  -> install Python only if no working runtime exists
+
+Open/run JavaScript
+  -> detect Node.js
+  -> install Node.js LTS only if missing
+```
+
+This avoids forcing every external PC to install or scan every development stack during setup.
+
+## Python behavior
+
+For Python files, Auto Comment checks for a **working interpreter**, not just a command name. This helps avoid false positives from broken PATH entries or Windows app execution aliases.
+
+The extension validates Python before compiling with:
+
+```text
+python -c "import sys; print(sys.executable)"
+```
+
+or the equivalent launcher form for `py` / `pymanager`.
+
+If Python is missing on Windows, the bootstrap uses the Python Install Manager and then retries runtime discovery.
 
 ## Extension commands
 
 - **F6** — Compile and Auto Comment
 - **Compile and Auto Comment** — validates/builds the current file, then comments it
-- **Run and Auto Comment** — builds, comments, then runs the program
+- **Run and Auto Comment** — validates/builds, comments, then runs it
 - **Add Comments to Current File** — comments without compiling
-
-## Project structure
-
-```text
-.vscode/
-  settings.json
-  tasks.json
-scripts/
-  bootstrap.ps1
-  install.ps1
-  smart_build.ps1
-  auto_comment.js
-auto-comment-extension/
-  bootstrap.ps1
-  extension.js
-  package.json
-install-extension.bat
-```
 
 ## Encoding policy
 
-Operational logs and setup messages use English with UTF-8. Generated learning comments are intentionally Korean.
+Operational/setup messages use English UTF-8. Generated learning comments are intentionally Korean.
 
 ## License
 
