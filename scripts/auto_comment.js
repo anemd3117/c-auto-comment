@@ -161,7 +161,7 @@ function explainLine(line, ext) {
 
 function processFile(targetFilePath) {
     if (!fs.existsSync(targetFilePath)) {
-        console.error(`[AutoComment] 파일을 찾을 수 없습니다: ${targetFilePath}`);
+        console.error(`[AutoComment] File not found: ${targetFilePath}`);
         process.exit(1);
     }
 
@@ -183,7 +183,7 @@ function processFile(targetFilePath) {
         if (regex.test(maskedContent)) {
             maskedContent = maskedContent.replace(regex, eng);
             renamed = true;
-            console.log(`[AutoComment] 한글 식별자 변환: '${kor}' -> '${eng}'`);
+            console.log(`[AutoComment] Identifier normalized: '${kor}' -> '${eng}'`);
         }
     }
 
@@ -234,13 +234,13 @@ function processFile(targetFilePath) {
     }
 
     fs.writeFileSync(targetFilePath, result.join('\r\n'), 'utf8');
-    console.log(`[AutoComment] 완료: ${path.basename(targetFilePath)} (${commentCount}개 주석 추가됨)`);
+    console.log(`[AutoComment] Completed: ${path.basename(targetFilePath)} (${commentCount} comments added)`);
 }
 
 // CLI 진입점
 const target = process.argv[2];
 if (!target) {
-    console.log('사용법: node auto_comment.js <파일경로>');
+    console.log('Usage: node auto_comment.js <file-path>');
     process.exit(0);
 }
 
