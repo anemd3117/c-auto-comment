@@ -1,15 +1,15 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
 echo ====================================================
-echo [Auto Comment] Portable installer v0.0.7
+echo [Auto Comment] Portable installer v0.0.8
 echo ====================================================
 
 set "ROOT=%~dp0"
 set "BOOTSTRAP=%ROOT%scripts\bootstrap.ps1"
 set "EXT_DIR=%ROOT%auto-comment-extension"
-set "VSIX=%EXT_DIR%\auto-comment-after-run-0.0.7.vsix"
+set "VSIX=%EXT_DIR%\auto-comment-after-run-0.0.8.vsix"
 
 if not exist "%BOOTSTRAP%" (
     echo [ERROR] Bootstrap script not found: %BOOTSTRAP%
@@ -39,11 +39,11 @@ if errorlevel 1 (
 if not exist "%VSIX%" (
     echo [INFO] Building VSIX package from source...
     pushd "%EXT_DIR%"
-    call npx --yes @vscode/vsce package --out "auto-comment-after-run-0.0.7.vsix"
-    set "PKG_EXIT=%ERRORLEVEL%"
+    call npx --yes @vscode/vsce package --out "auto-comment-after-run-0.0.8.vsix"
+    set "PKG_EXIT=!ERRORLEVEL!"
     popd
-    if not "%PKG_EXIT%"=="0" (
-        echo [ERROR] VSIX packaging failed with exit code %PKG_EXIT%.
+    if not "!PKG_EXIT!"=="0" (
+        echo [ERROR] VSIX packaging failed with exit code !PKG_EXIT!.
         goto :fail
     )
 )
@@ -56,7 +56,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [READY] Auto Comment v0.0.7 is installed.
+echo [READY] Auto Comment v0.0.8 is installed.
 echo [INFO] Restart VS Code or run "Developer: Reload Window".
 echo.
 pause
