@@ -2,24 +2,22 @@
 
 Portable VS Code tooling for C/C++ learners. The project validates or compiles C/C++ files and adds beginner-friendly Korean learning comments automatically.
 
-## v0.0.9
+## v0.0.10
 
-This release keeps the portable bootstrap work and fixes VS Code CLI path resolution on Windows.
+This release removes the remaining target-PC path coupling.
 
-- Resolves the absolute path of `code.cmd` before installation so VS Code does not look for `Code.exe` relative to the project folder
-- Keeps the v0.0.8 batch exit-code fix
-- English UTF-8 setup/build/diagnostic logs
-- Automatic dependency detection
-- Automatic MSYS2 + UCRT64 GCC/G++ installation on Windows when missing
-- Automatic Node.js LTS installation when missing
-- Automatic VS Code installation when the one-click installer needs it
-- No user-specific `C:\Users\...` paths
-- No fixed compiler path in workspace configuration
-- Runtime compiler discovery from PATH and common MSYS2 locations
-- GitHub Actions builds the VSIX and publishes it to the matching GitHub Release
-- Korean comments generated in source files remain unchanged
+- The target PC no longer builds the VSIX with `npx`
+- The installer downloads the prebuilt VSIX from the matching GitHub Release
+- Newly installed Node.js no longer has to appear in the parent CMD session before installation can continue
+- GCC, MSYS2, Node.js, and VS Code are discovered dynamically from the current system
+- MSYS2 is no longer required to exist at a fixed `C:\msys64` location
+- The extension host refreshes the Windows Machine/User PATH after automatic dependency installation
+- The batch file is only a small launcher for the PowerShell installer
+- VSIX installation is verified with `code --list-extensions --show-versions`
+- Windows CI rejects known machine-specific paths and installer-side `npx` dependencies
+- Operational logs remain English UTF-8; generated learning comments remain Korean
 
-Automatic installs use trusted package managers: Windows Package Manager (winget) and MSYS2 pacman.
+Automatic installs use Windows Package Manager (winget) and MSYS2 pacman.
 
 ## One-click installation on Windows
 
@@ -29,7 +27,16 @@ cd c-auto-comment
 .\install-extension.bat
 ```
 
-The installer checks the machine, installs missing development dependencies, builds the current VSIX if necessary, and installs it into VS Code.
+The installer:
+
+1. Reads the extension version from `package.json`.
+2. Detects or installs the required development tools.
+3. Resolves the actual VS Code CLI path.
+4. Downloads the prebuilt VSIX from the matching GitHub Release into the Windows temp directory.
+5. Installs the VSIX using the resolved VS Code CLI.
+6. Verifies that the exact extension version is installed.
+
+The target PC does **not** need to package the VSIX locally.
 
 ## Portable workspace mode
 
@@ -40,13 +47,7 @@ git clone https://github.com/anemd3117/c-auto-comment.git
 code c-auto-comment
 ```
 
-Open a `.c`, `.cpp`, `.h`, or `.hpp` file and press **Ctrl+Shift+B**. The smart build task will:
-
-1. Detect GCC/G++.
-2. Install the MSYS2 UCRT64 toolchain if it is missing.
-3. Compile source files or syntax-check header files.
-4. Detect/install Node.js when the comment engine needs it.
-5. Add beginner-friendly Korean comments after a successful build.
+Open a `.c`, `.cpp`, `.h`, or `.hpp` file and press **Ctrl+Shift+B**. The smart build task can bootstrap missing GCC/G++ and Node.js dependencies and refresh PATH before retrying.
 
 ## Extension commands
 
@@ -63,6 +64,7 @@ Open a `.c`, `.cpp`, `.h`, or `.hpp` file and press **Ctrl+Shift+B**. The smart 
   tasks.json
 scripts/
   bootstrap.ps1
+  install.ps1
   smart_build.ps1
   auto_comment.js
 auto-comment-extension/
