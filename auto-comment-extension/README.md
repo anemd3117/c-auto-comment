@@ -2,13 +2,13 @@
 
 Portable VS Code extension for C/C++, Python, and JavaScript learning workflows.
 
-Version 0.0.11 improves Python support on fresh Windows PCs and reduces startup overhead:
+Version 0.0.12 keeps the fast lazy runtime detection from v0.0.11 and adds external-PC setup repairs:
 
-- working Python runtime validation
-- support for `pymanager`, `py`, `python`, and `python3`
-- lazy Python/GCC/Node dependency setup
-- cached executable discovery
-- extension activation only for supported languages and commands
+- portable ripgrep discovery and stable user path
+- Todo Tree setup using `todo-tree.ripgrep.ripgrep`
+- Python and Pylance VS Code support setup
+- cleanup of unsupported Tabnine / legacy IntelliCode extensions
+- no fixed MSYS2 user-machine debugger path
 - English UTF-8 operational logs with Korean generated learning comments
 
 Commands:
