@@ -7,8 +7,41 @@ const crypto = require('crypto');
 
 const EXTENSION_ROOT = __dirname;
 
-function refreshWindowsPath() {
+const executableCache = new Map();
+let pythonRuntimeCache;
+let windowsPathRefreshed = false;
+let outputChannel = null;
+
+function getOutputChannel() {
+    if (!outputChannel) {
+        outputChannel = vscode.window.createOutputChannel('Auto Comment');
+    }
+    return outputChannel;
+}
+
+function detectLanguage(document) {
+    const ext = path.extname(document.fileName || '').toLowerCase();
+
+    if (ext === '.c') return 'c';
+    if (ext === '.h') return 'c_header';
+    if (['.cpp', '.cc', '.cxx', '.hpp', '.hh', '.hxx'].includes(ext)) return 'cpp';
+    if (ext === '.py' || ext === '.pyw') return 'python';
+    if (['.js', '.mjs', '.cjs'].includes(ext)) return 'javascript';
+
+    return document.languageId || ext.replace(/^\./, '');
+}
+
+function clearRuntimeCaches() {
+    executableCache.clear();
+    pythonRuntimeCache = undefined;
+}
+
+function refreshWindowsPath(force = false) {
     if (process.platform !== 'win32') {
+        return;
+    }
+
+    if (windowsPathRefreshed && !force) {
         return;
     }
 
@@ -21,7 +54,11 @@ function refreshWindowsPath() {
         const freshPath = cp.execFileSync(
             'powershell.exe',
             ['-NoProfile', '-Command', script],
-            { encoding: 'utf8', windowsHide: true }
+            {
+                encoding: 'utf8',
+                windowsHide: true,
+                timeout: 3000
+            }
         ).trim();
 
         if (freshPath) {
@@ -29,6 +66,9 @@ function refreshWindowsPath() {
             process.env.Path = freshPath;
         }
     } catch {}
+
+    windowsPathRefreshed = true;
+    clearRuntimeCaches();
 }
 
 function searchExecutableOnPath(name) {
@@ -45,46 +85,145 @@ function searchExecutableOnPath(name) {
             } catch {}
         }
     }
+
     return null;
 }
 
-function findExecutable(name) {
+function findExecutable(name, options = {}) {
+    const key = String(name).toLowerCase();
+    const refreshOnMiss = options.refreshOnMiss !== false;
+
+    if (executableCache.has(key)) {
+        const cached = executableCache.get(key);
+        if (cached && fs.existsSync(cached)) {
+            return cached;
+        }
+        if (cached === null && (!refreshOnMiss || windowsPathRefreshed)) {
+            return null;
+        }
+    }
+
     let found = searchExecutableOnPath(name);
-    if (!found && process.platform === 'win32') {
+
+    if (!found && process.platform === 'win32' && refreshOnMiss && !windowsPathRefreshed) {
         refreshWindowsPath();
         found = searchExecutableOnPath(name);
     }
+
+    executableCache.set(key, found || null);
     return found;
+}
+
+function probePython(executable, prefixArgs = []) {
+    if (!executable) {
+        return null;
+    }
+
+    try {
+        const result = cp.spawnSync(
+            executable,
+            [...prefixArgs, '-c', 'import sys; print(sys.executable)'],
+            {
+                encoding: 'utf8',
+                windowsHide: true,
+                timeout: 4000,
+                env: {
+                    ...process.env,
+                    PYTHONUTF8: '1'
+                }
+            }
+        );
+
+        if (result.status !== 0) {
+            return null;
+        }
+
+        const lines = String(result.stdout || '')
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean);
+
+        const interpreter = lines.length > 0 ? lines[lines.length - 1] : '';
+        if (!interpreter || !fs.existsSync(interpreter)) {
+            return null;
+        }
+
+        return {
+            executable,
+            prefixArgs: [...prefixArgs],
+            interpreter
+        };
+    } catch {
+        return null;
+    }
+}
+
+function findPythonRuntime(force = false) {
+    if (!force && pythonRuntimeCache !== undefined) {
+        return pythonRuntimeCache;
+    }
+
+    const candidates = process.platform === 'win32'
+        ? [
+            { name: 'pymanager', prefixArgs: ['exec'] },
+            { name: 'py', prefixArgs: [] },
+            { name: 'python', prefixArgs: [] },
+            { name: 'python3', prefixArgs: [] }
+        ]
+        : [
+            { name: 'python3', prefixArgs: [] },
+            { name: 'python', prefixArgs: [] }
+        ];
+
+    const tryCurrentPath = () => {
+        for (const candidate of candidates) {
+            const executable = searchExecutableOnPath(candidate.name);
+            const runtime = probePython(executable, candidate.prefixArgs);
+            if (runtime) {
+                return runtime;
+            }
+        }
+        return null;
+    };
+
+    let runtime = tryCurrentPath();
+
+    if (!runtime && process.platform === 'win32' && !windowsPathRefreshed) {
+        refreshWindowsPath();
+        runtime = tryCurrentPath();
+    }
+
+    pythonRuntimeCache = runtime || null;
+    return pythonRuntimeCache;
 }
 
 async function ensureRuntime(language, filePath, workspacePath, output) {
     const ext = path.extname(filePath).toLowerCase();
     let tool = null;
     let component = null;
+    let ready = false;
 
     if (language === 'c' || language === 'cpp' || language === 'c_header' || isHeaderFile(filePath)) {
-        tool = (language === 'cpp' || ext === '.cpp' || ext === '.hpp' || ext === '.hxx') ? 'g++' : 'gcc';
+        tool = (language === 'cpp' || ['.cpp', '.cc', '.cxx', '.hpp', '.hh', '.hxx'].includes(ext)) ? 'g++' : 'gcc';
         component = 'Toolchain';
+        ready = Boolean(findExecutable(tool));
     } else if (language === 'javascript') {
         tool = 'node';
         component = 'Node';
+        ready = Boolean(findExecutable(tool));
     } else if (language === 'python') {
-        const python = findExecutable('python') || findExecutable('python3');
-        if (python) {
-            return true;
-        }
-        output.appendLine('[MISSING] Python runtime was not found.');
-        vscode.window.showErrorMessage('Python is not installed or is not available on PATH.');
-        return false;
+        tool = 'Python';
+        component = 'Python';
+        ready = Boolean(findPythonRuntime());
     } else {
         return true;
     }
 
-    if (findExecutable(tool)) {
+    if (ready) {
         return true;
     }
 
-    output.appendLine('[MISSING] ' + tool + ' was not found.');
+    output.appendLine('[MISSING] ' + tool + ' runtime was not found.');
 
     if (process.platform !== 'win32') {
         output.appendLine('[ERROR] Automatic dependency installation is currently supported on Windows only.');
@@ -100,7 +239,7 @@ async function ensureRuntime(language, filePath, workspacePath, output) {
     }
 
     output.appendLine('[SETUP] Installing missing dependency component: ' + component);
-    vscode.window.showInformationMessage('Auto Comment is installing the missing ' + tool + ' dependency.');
+    vscode.window.showInformationMessage('Auto Comment is preparing the missing ' + tool + ' runtime.');
 
     const result = await spawnAndCapture(
         'powershell.exe',
@@ -118,10 +257,17 @@ async function ensureRuntime(language, filePath, workspacePath, output) {
         return false;
     }
 
-    refreshWindowsPath();
-    if (!findExecutable(tool)) {
-        output.appendLine('[ERROR] ' + tool + ' was installed but could not be resolved from the refreshed system PATH.');
-        vscode.window.showErrorMessage(tool + ' was installed but its executable could not be resolved. Check the Auto Comment output channel.');
+    refreshWindowsPath(true);
+
+    if (component === 'Python') {
+        ready = Boolean(findPythonRuntime(true));
+    } else {
+        ready = Boolean(findExecutable(tool, { refreshOnMiss: false }));
+    }
+
+    if (!ready) {
+        output.appendLine('[ERROR] ' + tool + ' was installed but could not be resolved after refreshing the environment.');
+        vscode.window.showErrorMessage(tool + ' was installed but its runtime could not be resolved. Check the Auto Comment output channel.');
         return false;
     }
 
@@ -190,7 +336,7 @@ function activate(context) {
                 const editor = vscode.window.activeTextEditor;
                 if (editor) {
                     const doc = editor.document;
-                    const lang = doc.languageId || path.extname(doc.fileName).slice(1);
+                    const lang = detectLanguage(doc);
                     const updated = await addComments(editor, lang);
                     if (updated) {
                         vscode.window.showInformationMessage(`[Auto Comment] Compilation succeeded. Learning comments were added to ${path.basename(doc.fileName)}.`);
@@ -223,13 +369,13 @@ async function compileAndComment() {
 
     const document = editor.document;
     const filePath = document.fileName;
-    const language = document.languageId || path.extname(filePath).slice(1);
+    const language = detectLanguage(document);
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
     const workspacePath = workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(filePath);
 
     await document.save();
 
-    const output = vscode.window.createOutputChannel('Auto Comment');
+    const output = getOutputChannel();
     output.clear();
     output.show(true);
     output.appendLine('[BUILD] Validation target: ' + filePath);
@@ -295,13 +441,13 @@ async function runAndComment() {
         return compileAndComment();
     }
 
-    const language = document.languageId || path.extname(filePath).slice(1);
+    const language = detectLanguage(document);
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
     const workspacePath = workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(filePath);
 
     await document.save();
 
-    const output = vscode.window.createOutputChannel('Auto Comment');
+    const output = getOutputChannel();
     output.clear();
     output.show(true);
     output.appendLine('[RUN] Build and run target: ' + filePath);
@@ -362,7 +508,7 @@ async function commentCurrentFile() {
         return;
     }
 
-    const language = editor.document.languageId || path.extname(editor.document.fileName).slice(1);
+    const language = detectLanguage(editor.document);
     const updated = await addComments(editor, language);
     vscode.window.showInformationMessage(
         updated ? "Learning comments were added to the current file." : "No new comments were needed."
@@ -408,14 +554,19 @@ function getCompileCommand(language, filePath, workspacePath) {
     }
 
     if (language === 'python') {
-        const executable = findExecutable('python') || findExecutable('python3') || 'python';
+        const runtime = findPythonRuntime();
+        const executable = runtime ? runtime.executable : 'python';
+        const prefixArgs = runtime ? runtime.prefixArgs : [];
         const quotedExecutable = quote(executable);
+        const prefixText = prefixArgs.join(' ');
+        const commandPrefix = prefixText ? quotedExecutable + ' ' + prefixText : quotedExecutable;
+
         return {
             executable,
-            args: ['-m', 'py_compile', filePath],
+            args: [...prefixArgs, '-m', 'py_compile', filePath],
             outputPath: null,
-            runCommandString: '& ' + quotedExecutable + ' ' + quotedFile,
-            displayCommand: quotedExecutable + ' -m py_compile ' + quotedFile
+            runCommandString: '& ' + commandPrefix + ' ' + quotedFile,
+            displayCommand: commandPrefix + ' -m py_compile ' + quotedFile
         };
     }
 
@@ -708,7 +859,13 @@ function quote(value) {
     return '"' + value.replace(/\x22/g, '\\x22') + '"';
 }
 
-function deactivate() {}
+function deactivate() {
+    if (outputChannel) {
+        outputChannel.dispose();
+        outputChannel = null;
+    }
+    clearRuntimeCaches();
+}
 
 module.exports = {
     activate,
