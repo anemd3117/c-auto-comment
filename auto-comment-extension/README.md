@@ -1,5 +1,11 @@
 # Auto Comment After Run
 
-Run the active C, C++, Python, or JavaScript file, wait for it to finish, then add beginner-friendly comments without an external API.
+Portable VS Code extension for C/C++ learning workflows.
 
-Use the `Run and Auto Comment` command from the Command Palette or the editor title bar.
+Version 0.0.10 removes fixed target-machine paths. Missing Windows dependencies are discovered dynamically and can be installed automatically. Operational logs use English UTF-8 while generated learning comments remain Korean.
+
+Commands:
+
+- Compile and Auto Comment
+- Run and Auto Comment
+- Add Comments to Current File
