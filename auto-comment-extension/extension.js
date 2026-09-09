@@ -5,6 +5,103 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
+const EXTENSION_ROOT = __dirname;
+
+function findExecutable(name) {
+    const candidates = [];
+    const pathValue = process.env.PATH || process.env.Path || '';
+    const extensions = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
+
+    for (const dir of pathValue.split(path.delimiter).filter(Boolean)) {
+        for (const ext of extensions) {
+            candidates.push(path.join(dir, name + ext));
+        }
+    }
+
+    if (process.platform === 'win32') {
+        if (name === 'gcc' || name === 'g++') {
+            candidates.unshift(path.join('C:\\msys64\\ucrt64\\bin', name + '.exe'));
+        }
+        if (name === 'node') {
+            candidates.unshift(path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe'));
+        }
+    }
+
+    for (const candidate of candidates) {
+        try {
+            if (candidate && fs.existsSync(candidate)) {
+                return candidate;
+            }
+        } catch {}
+    }
+    return null;
+}
+
+async function ensureRuntime(language, filePath, workspacePath, output) {
+    const ext = path.extname(filePath).toLowerCase();
+    let tool = null;
+    let component = null;
+
+    if (language === 'c' || language === 'cpp' || language === 'c_header' || isHeaderFile(filePath)) {
+        tool = (language === 'cpp' || ext === '.cpp' || ext === '.hpp' || ext === '.hxx') ? 'g++' : 'gcc';
+        component = 'Toolchain';
+    } else if (language === 'javascript') {
+        tool = 'node';
+        component = 'Node';
+    } else if (language === 'python') {
+        const python = findExecutable('python') || findExecutable('python3');
+        if (python) {
+            return true;
+        }
+        output.appendLine('[MISSING] Python runtime was not found.');
+        vscode.window.showErrorMessage('Python is not installed or is not available on PATH.');
+        return false;
+    } else {
+        return true;
+    }
+
+    if (findExecutable(tool)) {
+        return true;
+    }
+
+    output.appendLine('[MISSING] ' + tool + ' was not found.');
+
+    if (process.platform !== 'win32') {
+        output.appendLine('[ERROR] Automatic dependency installation is currently supported on Windows only.');
+        vscode.window.showErrorMessage(tool + ' is required. Install it and make sure it is available on PATH.');
+        return false;
+    }
+
+    const bootstrapPath = path.join(EXTENSION_ROOT, 'bootstrap.ps1');
+    if (!fs.existsSync(bootstrapPath)) {
+        output.appendLine('[ERROR] Bundled bootstrap script was not found: ' + bootstrapPath);
+        vscode.window.showErrorMessage('Dependency bootstrap script is missing from the extension package.');
+        return false;
+    }
+
+    output.appendLine('[SETUP] Installing missing dependency component: ' + component);
+    vscode.window.showInformationMessage('Auto Comment is installing the missing ' + tool + ' dependency.');
+
+    const result = await spawnAndCapture(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', bootstrapPath, '-Components', component],
+        workspacePath
+    );
+
+    if (result.output) {
+        output.appendLine(result.output);
+    }
+
+    if (result.exitCode !== 0 || !findExecutable(tool)) {
+        output.appendLine('[ERROR] Dependency bootstrap failed for ' + tool + '.');
+        vscode.window.showErrorMessage('Automatic installation failed for ' + tool + '. Check the Auto Comment output channel.');
+        return false;
+    }
+
+    output.appendLine('[OK] Dependency is ready: ' + tool);
+    return true;
+}
+
 // 공통 한글 변수/식별자 -> 영어 매핑 딕셔너리
 const KOREAN_IDENTIFIER_MAP = {
     '넓이': 'area',
@@ -69,7 +166,7 @@ function activate(context) {
                     const lang = doc.languageId || path.extname(doc.fileName).slice(1);
                     const updated = await addComments(editor, lang);
                     if (updated) {
-                        vscode.window.showInformationMessage(`[Auto Comment] 컴파일 성공! ${path.basename(doc.fileName)}에 학습용 주석이 자동 추가되었습니다.`);
+                        vscode.window.showInformationMessage(`[Auto Comment] Compilation succeeded. Learning comments were added to ${path.basename(doc.fileName)}.`);
                     }
                 }
             }
@@ -93,7 +190,7 @@ function isHeaderFile(filePath) {
 async function compileAndComment() {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-        vscode.window.showWarningMessage("주석을 추가할 활성 파일이 열려있지 않습니다.");
+        vscode.window.showWarningMessage("No active file is open.");
         return;
     }
 
@@ -104,18 +201,24 @@ async function compileAndComment() {
     const workspacePath = workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(filePath);
 
     await document.save();
-    const command = getCompileCommand(language, filePath, workspacePath);
-
-    if (!command) {
-        vscode.window.showWarningMessage('지원하지 않는 언어입니다: ' + language);
-        return;
-    }
 
     const output = vscode.window.createOutputChannel('Auto Comment');
     output.clear();
     output.show(true);
-    output.appendLine('[컴파일 검증 시작] 파일: ' + filePath);
-    output.appendLine('[명령어] ' + command.displayCommand);
+    output.appendLine('[BUILD] Validation target: ' + filePath);
+
+    const runtimeReady = await ensureRuntime(language, filePath, workspacePath, output);
+    if (!runtimeReady) {
+        return;
+    }
+
+    const command = getCompileCommand(language, filePath, workspacePath);
+    if (!command) {
+        vscode.window.showWarningMessage('Unsupported language: ' + language);
+        return;
+    }
+
+    output.appendLine('[COMMAND] ' + command.displayCommand);
 
     try {
         const compileResult = await spawnAndCapture(command.executable, command.args, workspacePath);
@@ -124,21 +227,21 @@ async function compileAndComment() {
         }
 
         if (compileResult.exitCode !== 0) {
-            vscode.window.showErrorMessage('컴파일 에러가 발생했습니다 (코드: ' + compileResult.exitCode + '). 출력 창을 확인하세요.');
+            vscode.window.showErrorMessage('Compilation failed (exit code: ' + compileResult.exitCode + '). Check the Auto Comment output channel.');
             return;
         }
 
-        output.appendLine('[컴파일 성공] 학습용 한글 주석을 생성합니다...');
+        output.appendLine('[OK] Compilation succeeded. Adding Korean learning comments...');
         const updated = await addComments(editor, language);
         if (updated) {
-            vscode.window.showInformationMessage('컴파일 완료! 학습용 한글 주석이 코드에 추가되었습니다.');
+            vscode.window.showInformationMessage('Compilation completed. Learning comments were added.');
         } else {
-            vscode.window.showInformationMessage('컴파일 완료! 이미 모든 줄에 주석이 작성되어 있습니다.');
+            vscode.window.showInformationMessage('Compilation completed. No new comments were needed.');
         }
     } catch (error) {
         const msg = error && error.message ? error.message : String(error);
-        output.appendLine('[에러] ' + msg);
-        vscode.window.showErrorMessage('컴파일 중 오류가 발생했습니다: ' + msg);
+        output.appendLine('[ERROR] ' + msg);
+        vscode.window.showErrorMessage('Compilation error: ' + msg);
     } finally {
         if (command.outputPath) {
             removeTemporaryExecutable(command.outputPath);
@@ -152,7 +255,7 @@ async function compileAndComment() {
 async function runAndComment() {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-        vscode.window.showWarningMessage("실행할 파일이 열려있지 않습니다.");
+        vscode.window.showWarningMessage("No active file is open to run.");
         return;
     }
 
@@ -161,7 +264,7 @@ async function runAndComment() {
 
     // 헤더 파일은 실행 파일이 아니므로 컴파일 문법 검증 및 주석 추가로 자동 전환
     if (isHeaderFile(filePath)) {
-        vscode.window.showInformationMessage("헤더 파일(.h)은 단독 실행 파일이 아니므로 문법 검증 및 주석 추가만 진행합니다.");
+        vscode.window.showInformationMessage("Header files are not standalone executables. Running syntax validation and comment generation instead.");
         return compileAndComment();
     }
 
@@ -170,17 +273,22 @@ async function runAndComment() {
     const workspacePath = workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(filePath);
 
     await document.save();
-    const command = getCompileCommand(language, filePath, workspacePath);
-
-    if (!command) {
-        vscode.window.showWarningMessage('지원하지 않는 언어입니다: ' + language);
-        return;
-    }
 
     const output = vscode.window.createOutputChannel('Auto Comment');
     output.clear();
     output.show(true);
-    output.appendLine('[컴파일 및 실행 시작] 파일: ' + filePath);
+    output.appendLine('[RUN] Build and run target: ' + filePath);
+
+    const runtimeReady = await ensureRuntime(language, filePath, workspacePath, output);
+    if (!runtimeReady) {
+        return;
+    }
+
+    const command = getCompileCommand(language, filePath, workspacePath);
+    if (!command) {
+        vscode.window.showWarningMessage('Unsupported language: ' + language);
+        return;
+    }
 
     try {
         // 1. 컴파일 단계
@@ -190,12 +298,12 @@ async function runAndComment() {
         }
 
         if (compileResult.exitCode !== 0) {
-            vscode.window.showErrorMessage('컴파일 실패 (코드: ' + compileResult.exitCode + '). 출력 창의 에러 메시지를 확인하세요.');
+            vscode.window.showErrorMessage('Compilation failed (exit code: ' + compileResult.exitCode + '). Check the Auto Comment output channel.');
             return;
         }
 
         // 2. 컴파일 성공 즉시 주석 먼저 추가!
-        output.appendLine('[컴파일 성공] 주석을 추가합니다...');
+        output.appendLine('[OK] Compilation succeeded. Adding learning comments...');
         await addComments(editor, language);
 
         // 3. 통합 터미널에서 프로그램 실행 (scanf 등의 키보드 입력을 원활히 처리)
@@ -208,12 +316,12 @@ async function runAndComment() {
         const runCmd = command.runCommandString || (command.outputPath ? '& "' + command.outputPath + '"' : '');
         if (runCmd) {
             terminal.sendText(runCmd);
-            vscode.window.showInformationMessage('컴파일 완료 및 주석 추가 완료! 터미널에서 프로그램을 실행합니다.');
+            vscode.window.showInformationMessage('Build and comment generation completed. Running the program in the terminal.');
         }
     } catch (error) {
         const msg = error && error.message ? error.message : String(error);
-        output.appendLine('[에러] ' + msg);
-        vscode.window.showErrorMessage('오류 발생: ' + msg);
+        output.appendLine('[ERROR] ' + msg);
+        vscode.window.showErrorMessage('Error: ' + msg);
     }
 }
 
@@ -223,14 +331,14 @@ async function runAndComment() {
 async function commentCurrentFile() {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-        vscode.window.showWarningMessage("주석을 추가할 파일이 열려있지 않습니다.");
+        vscode.window.showWarningMessage("No active file is open.");
         return;
     }
 
     const language = editor.document.languageId || path.extname(editor.document.fileName).slice(1);
     const updated = await addComments(editor, language);
     vscode.window.showInformationMessage(
-        updated ? "현재 파일에 학습용 한글 주석을 추가했습니다." : "추가할 주석이 없거나 이미 주석이 작성되어 있습니다."
+        updated ? "Learning comments were added to the current file." : "No new comments were needed."
     );
 }
 
@@ -242,11 +350,8 @@ function getCompileCommand(language, filePath, workspacePath) {
     const isHeader = isHeaderFile(filePath);
 
     if (language === 'c' || language === 'cpp' || language === 'c_header' || isHeader) {
-        const compiler = (language === 'cpp' || filePath.endsWith('.hpp')) ? 'g++' : 'gcc';
-        const ucrtPath = 'C:/msys64/ucrt64/bin/' + compiler + '.exe';
-        const executable = (process.platform === 'win32' && fs.existsSync(ucrtPath))
-            ? ucrtPath
-            : compiler;
+        const compiler = (language === 'cpp' || /\.(cpp|hpp|hxx)$/i.test(filePath)) ? 'g++' : 'gcc';
+        const executable = findExecutable(compiler) || compiler;
 
         // 헤더 파일인 경우: main() 링크 에러를 방지하기 위해 -fsyntax-only (문법 검증) 수행
         if (isHeader) {
@@ -276,22 +381,26 @@ function getCompileCommand(language, filePath, workspacePath) {
     }
 
     if (language === 'python') {
+        const executable = findExecutable('python') || findExecutable('python3') || 'python';
+        const quotedExecutable = quote(executable);
         return {
-            executable: 'python',
+            executable,
             args: ['-m', 'py_compile', filePath],
             outputPath: null,
-            runCommandString: 'python ' + quotedFile,
-            displayCommand: 'python -m py_compile ' + quotedFile
+            runCommandString: '& ' + quotedExecutable + ' ' + quotedFile,
+            displayCommand: quotedExecutable + ' -m py_compile ' + quotedFile
         };
     }
 
     if (language === 'javascript') {
+        const executable = findExecutable('node') || 'node';
+        const quotedExecutable = quote(executable);
         return {
-            executable: 'node',
+            executable,
             args: ['--check', filePath],
             outputPath: null,
-            runCommandString: 'node ' + quotedFile,
-            displayCommand: 'node --check ' + quotedFile
+            runCommandString: '& ' + quotedExecutable + ' ' + quotedFile,
+            displayCommand: quotedExecutable + ' --check ' + quotedFile
         };
     }
 
@@ -313,7 +422,12 @@ function spawnAndCapture(executable, args, cwd) {
         const child = cp.spawn(executable, args, {
             cwd,
             windowsHide: true,
-            encoding: 'utf8'
+            env: {
+                ...process.env,
+                LANG: 'C.UTF-8',
+                LC_ALL: 'C.UTF-8',
+                PYTHONUTF8: '1'
+            }
         });
         let output = '';
 

@@ -1,0 +1,70 @@
+name: Build and Release VSIX
+
+on:
+  pull_request:
+    paths:
+      - "auto-comment-extension/**"
+      - "scripts/**"
+      - ".vscode/**"
+      - "install-extension.bat"
+      - ".github/workflows/release-vsix.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "auto-comment-extension/**"
+      - "scripts/**"
+      - ".vscode/**"
+      - "install-extension.bat"
+      - ".github/workflows/release-vsix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: auto-comment-extension
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "vsix=auto-comment-after-run-$VERSION.vsix" >> "$GITHUB_OUTPUT"
+
+      - name: Package VSIX
+        shell: bash
+        run: npx --yes @vscode/vsce package --out "${{ steps.version.outputs.vsix }}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "auto-comment-after-run-${{ steps.version.outputs.version }}"
+          path: "auto-comment-extension/${{ steps.version.outputs.vsix }}"
+
+      - name: Create or update GitHub Release
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          VERSION: "${{ steps.version.outputs.version }}"
+          VSIX: "${{ steps.version.outputs.vsix }}"
+        run: |
+          TAG="v$VERSION"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$VSIX" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$VSIX"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "Auto Comment v$VERSION"               --notes "Portable dependency bootstrap, English UTF-8 operational logs, automatic GCC/MSYS2/Node.js setup, and removal of machine-specific paths."
+          fi

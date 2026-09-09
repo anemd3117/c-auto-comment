@@ -1,34 +1,51 @@
 {
   "name": "auto-comment-after-run",
   "displayName": "Auto Comment After Run",
-  "description": "Compiles or runs the active source file and adds beginner-friendly Korean comments automatically.",
-  "version": "0.0.6",
+  "description": "Portable C/C++ smart build and automatic beginner-friendly Korean learning comments with dependency bootstrap.",
+  "version": "0.0.7",
   "publisher": "local",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anemd3117/c-auto-comment.git",
+    "directory": "auto-comment-extension"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "c",
+    "cpp",
+    "gcc",
+    "learning",
+    "comments",
+    "portable"
+  ],
   "activationEvents": [
     "onStartupFinished"
   ],
   "main": "./extension.js",
+  "scripts": {
+    "package": "npx --yes @vscode/vsce package"
+  },
   "contributes": {
     "commands": [
       {
         "command": "autoCommentAfterRun.compileAndComment",
-        "title": "Compile and Auto Comment (컴파일 후 즉시 주석)",
+        "title": "Compile and Auto Comment",
         "icon": "$(check)"
       },
       {
         "command": "autoCommentAfterRun.runAndComment",
-        "title": "Run and Auto Comment (실행 및 자동 주석)",
+        "title": "Run and Auto Comment",
         "icon": "$(play)"
       },
       {
         "command": "autoCommentAfterRun.commentCurrentFile",
-        "title": "Add Comments to Current File (현재 파일 즉시 주석)",
+        "title": "Add Comments to Current File",
         "icon": "$(comment)"
       }
     ],
