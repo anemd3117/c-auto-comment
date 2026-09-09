@@ -1,27 +1,70 @@
 @echo off
+setlocal EnableExtensions
 chcp 65001 >nul
+
 echo ====================================================
-echo [Auto Comment] VS Code 확장 프로그램 자동 설치 스크립트
+echo [Auto Comment] Portable installer v0.0.7
 echo ====================================================
 
-set VSIX_FILE=%~dp0auto-comment-extension\auto-comment-after-run-0.0.6.vsix
+set "ROOT=%~dp0"
+set "BOOTSTRAP=%ROOT%scripts\bootstrap.ps1"
+set "EXT_DIR=%ROOT%auto-comment-extension"
+set "VSIX=%EXT_DIR%\auto-comment-after-run-0.0.7.vsix"
 
-if not exist "%VSIX_FILE%" (
-    echo [에러] 확장 파일(%VSIX_FILE%)을 찾을 수 없습니다.
-    pause
-    exit /b 1
+if not exist "%BOOTSTRAP%" (
+    echo [ERROR] Bootstrap script not found: %BOOTSTRAP%
+    goto :fail
 )
 
-echo VS Code 확장을 설치합니다...
-call code --install-extension "%VSIX_FILE%" --force
-
-if %ERRORLEVEL% equ 0 (
-    echo.
-    echo [성공] Auto Comment 확장이 성공적으로 설치되었습니다!
-    echo VS Code를 다시 시작하거나 창을 새로고침(Ctrl+R)하세요.
-) else (
-    echo.
-    echo [실패] 설치 중 오류가 발생했습니다. 'code' 명령어가 환경변수 PATH에 등록되어 있는지 확인하세요.
+echo [INFO] Checking and installing required development tools...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%BOOTSTRAP%" -Components All
+if errorlevel 1 (
+    echo [ERROR] Dependency bootstrap failed.
+    goto :fail
 )
 
+set "CODE_CMD=code"
+where code >nul 2>&1
+if errorlevel 1 (
+    if exist "%LOCALAPPDATA%\Programs\Microsoft VS Code\bin\code.cmd" (
+        set "CODE_CMD=%LOCALAPPDATA%\Programs\Microsoft VS Code\bin\code.cmd"
+    ) else if exist "%ProgramFiles%\Microsoft VS Code\bin\code.cmd" (
+        set "CODE_CMD=%ProgramFiles%\Microsoft VS Code\bin\code.cmd"
+    ) else (
+        echo [ERROR] VS Code CLI was not found after installation.
+        goto :fail
+    )
+)
+
+if not exist "%VSIX%" (
+    echo [INFO] Building VSIX package from source...
+    pushd "%EXT_DIR%"
+    call npx --yes @vscode/vsce package --out "auto-comment-after-run-0.0.7.vsix"
+    set "PKG_EXIT=%ERRORLEVEL%"
+    popd
+    if not "%PKG_EXIT%"=="0" (
+        echo [ERROR] VSIX packaging failed with exit code %PKG_EXIT%.
+        goto :fail
+    )
+)
+
+echo [INFO] Installing extension: %VSIX%
+call "%CODE_CMD%" --install-extension "%VSIX%" --force
+if errorlevel 1 (
+    echo [ERROR] VS Code extension installation failed.
+    goto :fail
+)
+
+echo.
+echo [READY] Auto Comment v0.0.7 is installed.
+echo [INFO] Restart VS Code or run "Developer: Reload Window".
+echo.
 pause
+exit /b 0
+
+:fail
+echo.
+echo [FAILED] Installation did not complete.
+echo.
+pause
+exit /b 1
