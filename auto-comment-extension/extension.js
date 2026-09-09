@@ -7,34 +7,54 @@ const crypto = require('crypto');
 
 const EXTENSION_ROOT = __dirname;
 
-function findExecutable(name) {
-    const candidates = [];
+function refreshWindowsPath() {
+    if (process.platform !== 'win32') {
+        return;
+    }
+
+    try {
+        const script = [
+            "[Environment]::GetEnvironmentVariable('Path','Machine')",
+            "[Environment]::GetEnvironmentVariable('Path','User')"
+        ].join(" + ';' + ");
+
+        const freshPath = cp.execFileSync(
+            'powershell.exe',
+            ['-NoProfile', '-Command', script],
+            { encoding: 'utf8', windowsHide: true }
+        ).trim();
+
+        if (freshPath) {
+            process.env.PATH = freshPath;
+            process.env.Path = freshPath;
+        }
+    } catch {}
+}
+
+function searchExecutableOnPath(name) {
     const pathValue = process.env.PATH || process.env.Path || '';
     const extensions = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
 
     for (const dir of pathValue.split(path.delimiter).filter(Boolean)) {
         for (const ext of extensions) {
-            candidates.push(path.join(dir, name + ext));
+            const candidate = path.join(dir, name + ext);
+            try {
+                if (fs.existsSync(candidate)) {
+                    return candidate;
+                }
+            } catch {}
         }
-    }
-
-    if (process.platform === 'win32') {
-        if (name === 'gcc' || name === 'g++') {
-            candidates.unshift(path.join('C:\\msys64\\ucrt64\\bin', name + '.exe'));
-        }
-        if (name === 'node') {
-            candidates.unshift(path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe'));
-        }
-    }
-
-    for (const candidate of candidates) {
-        try {
-            if (candidate && fs.existsSync(candidate)) {
-                return candidate;
-            }
-        } catch {}
     }
     return null;
+}
+
+function findExecutable(name) {
+    let found = searchExecutableOnPath(name);
+    if (!found && process.platform === 'win32') {
+        refreshWindowsPath();
+        found = searchExecutableOnPath(name);
+    }
+    return found;
 }
 
 async function ensureRuntime(language, filePath, workspacePath, output) {
@@ -92,9 +112,16 @@ async function ensureRuntime(language, filePath, workspacePath, output) {
         output.appendLine(result.output);
     }
 
-    if (result.exitCode !== 0 || !findExecutable(tool)) {
+    if (result.exitCode !== 0) {
         output.appendLine('[ERROR] Dependency bootstrap failed for ' + tool + '.');
         vscode.window.showErrorMessage('Automatic installation failed for ' + tool + '. Check the Auto Comment output channel.');
+        return false;
+    }
+
+    refreshWindowsPath();
+    if (!findExecutable(tool)) {
+        output.appendLine('[ERROR] ' + tool + ' was installed but could not be resolved from the refreshed system PATH.');
+        vscode.window.showErrorMessage(tool + ' was installed but its executable could not be resolved. Check the Auto Comment output channel.');
         return false;
     }
 
