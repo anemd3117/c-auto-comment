@@ -107,9 +107,24 @@ try {
 
     Write-Info "Downloading prebuilt VSIX: $url"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $url -OutFile $vsix -UseBasicParsing
 
-    if (-not (Test-Path $vsix)) { throw 'VSIX download did not create the expected file.' }
+    $downloaded = $false
+    for ($attempt = 1; $attempt -le 6; $attempt++) {
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $vsix -UseBasicParsing
+            $downloaded = $true
+            break
+        }
+        catch {
+            if ($attempt -eq 6) { throw }
+            Write-Info "Release asset is not ready yet. Retrying in 5 seconds ($attempt/6)..."
+            Start-Sleep -Seconds 5
+        }
+    }
+
+    if (-not $downloaded -or -not (Test-Path $vsix)) {
+        throw 'VSIX download did not create the expected file.'
+    }
 
     $size = (Get-Item $vsix).Length
     if ($size -lt 1024) { throw "Downloaded VSIX is unexpectedly small ($size bytes)." }
