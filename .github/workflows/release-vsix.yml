@@ -21,7 +21,58 @@ permissions:
   contents: write
 
 jobs:
+  windows-smoke:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell scripts
+        shell: powershell
+        run: |
+          $files = @(
+            'scripts\bootstrap.ps1',
+            'scripts\install.ps1',
+            'scripts\smart_build.ps1',
+            'auto-comment-extension\bootstrap.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
+          }
+
+      - name: Reject machine-specific paths and local VSIX builds
+        shell: powershell
+        run: |
+          $targets = @(
+            'install-extension.bat',
+            'scripts\bootstrap.ps1',
+            'scripts\install.ps1',
+            'scripts\smart_build.ps1',
+            'auto-comment-extension\bootstrap.ps1',
+            'auto-comment-extension\extension.js'
+          )
+          $bad = Select-String -Path $targets -Pattern 'C:\\Users\\user|C:\\msys64' -SimpleMatch:$false
+          if ($bad) {
+            $bad | ForEach-Object { Write-Error "$($_.Path):$($_.LineNumber) $($_.Line)" }
+            exit 1
+          }
+          if (Select-String -Path 'install-extension.bat','scripts\install.ps1' -Pattern '\bnpx\b') {
+            Write-Error 'Target-machine installer must not depend on npx or local VSIX packaging.'
+            exit 1
+          }
+
   package:
+    needs: windows-smoke
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -66,5 +117,9 @@ jobs:
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" "$VSIX" --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" "$VSIX"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "Auto Comment v$VERSION"               --notes "Portable dependency bootstrap, English UTF-8 operational logs, automatic GCC/MSYS2/Node.js setup, and removal of machine-specific paths."
+            gh release create "$TAG" "$VSIX" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Auto Comment v$VERSION" \
+              --notes "Path-independent installer, dynamic dependency discovery, English UTF-8 operational logs, and automatic GCC/MSYS2/Node.js setup."
           fi
