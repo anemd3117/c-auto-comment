@@ -12,8 +12,8 @@
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
-      "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
-      "preLaunchTask": "C: gcc build active file",
+      "miDebuggerPath": "gdb.exe",
+      "preLaunchTask": "C/C++: Smart Build + Auto Comment",
       "setupCommands": [
         {
           "description": "GDB에서 예쁜 출력 사용",
