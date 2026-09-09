@@ -71,6 +71,49 @@ jobs:
             exit 1
           }
 
+      - name: Validate Python portability and lazy startup
+        shell: powershell
+        run: |
+          $bootstrap = Get-Content -Raw 'scripts\bootstrap.ps1'
+          $installer = Get-Content -Raw 'scripts\install.ps1'
+          $extension = Get-Content -Raw 'auto-comment-extension\extension.js'
+          $package = Get-Content -Raw 'auto-comment-extension\package.json' | ConvertFrom-Json
+
+          if ($bootstrap -notmatch "ValidateSet\('All', 'Toolchain', 'Node', 'VSCode', 'Python'\)") {
+            Write-Error 'Python must be a supported bootstrap component.'
+            exit 1
+          }
+
+          if ($bootstrap -notmatch 'Python\.PythonInstallManager') {
+            Write-Error 'Python Install Manager bootstrap is missing.'
+            exit 1
+          }
+
+          if ($installer -match '-Components\s+All') {
+            Write-Error 'Installer must not eagerly bootstrap all language runtimes.'
+            exit 1
+          }
+
+          if ($installer -notmatch '-Components\s+VSCode') {
+            Write-Error 'Installer must bootstrap only the VS Code host.'
+            exit 1
+          }
+
+          if ($extension -notmatch "ext === '\.py'") {
+            Write-Error 'Python file-extension language detection is missing.'
+            exit 1
+          }
+
+          if ($extension -notmatch "component = 'Python'") {
+            Write-Error 'Python lazy runtime bootstrap is missing.'
+            exit 1
+          }
+
+          if ($package.activationEvents -contains 'onStartupFinished') {
+            Write-Error 'Extension must not activate on every VS Code startup.'
+            exit 1
+          }
+
   package:
     needs: windows-smoke
     runs-on: ubuntu-latest
@@ -94,6 +137,10 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "vsix=auto-comment-after-run-$VERSION.vsix" >> "$GITHUB_OUTPUT"
+
+      - name: Validate extension JavaScript
+        shell: bash
+        run: node --check extension.js
 
       - name: Package VSIX
         shell: bash
@@ -121,5 +168,5 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Auto Comment v$VERSION" \
-              --notes "Path-independent installer, dynamic dependency discovery, English UTF-8 operational logs, and automatic GCC/MSYS2/Node.js setup."
+              --notes "Faster lazy bootstrap, improved Python runtime discovery/installation, cached executable lookup, path-independent setup, and English UTF-8 operational logs."
           fi

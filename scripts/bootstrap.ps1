@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('All', 'Toolchain', 'Node', 'VSCode')]
+    [ValidateSet('All', 'Toolchain', 'Node', 'VSCode', 'Python')]
     [string[]]$Components = @('All')
 )
 
@@ -16,6 +16,9 @@ try {
 
 $env:LANG = 'C.UTF-8'
 $env:LC_ALL = 'C.UTF-8'
+$env:PYTHONUTF8 = '1'
+
+$script:UninstallEntriesCache = $null
 
 function Write-Info([string]$Message) { Write-Host "[INFO] $Message" }
 function Write-Ok([string]$Message) { Write-Host "[OK] $Message" }
@@ -29,22 +32,34 @@ function Refresh-ProcessPath {
     $env:Path = ($parts -join ';')
 }
 
+function Reset-DiscoveryCache {
+    $script:UninstallEntriesCache = $null
+}
+
 function Find-OnPath([string]$Name) {
-    Refresh-ProcessPath
     $cmd = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($cmd -and $cmd.Source) { return $cmd.Source }
     return $null
 }
 
 function Get-UninstallEntries {
+    if ($null -ne $script:UninstallEntriesCache) {
+        return $script:UninstallEntriesCache
+    }
+
+    $items = @()
     $keys = @(
         'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
         'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
         'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
     )
+
     foreach ($key in $keys) {
-        Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+        $items += @(Get-ItemProperty -Path $key -ErrorAction SilentlyContinue)
     }
+
+    $script:UninstallEntriesCache = $items
+    return $items
 }
 
 function Find-VSCodeCli {
@@ -53,12 +68,16 @@ function Find-VSCodeCli {
         if ($cmd -and (Test-Path $cmd)) { return $cmd }
     }
 
-    $entries = Get-UninstallEntries | Where-Object { $_.DisplayName -like 'Microsoft Visual Studio Code*' }
+    $entries = Get-UninstallEntries | Where-Object {
+        $_.DisplayName -like 'Microsoft Visual Studio Code*'
+    }
+
     foreach ($entry in $entries) {
         if ($entry.InstallLocation) {
             $candidate = Join-Path $entry.InstallLocation 'bin\code.cmd'
             if (Test-Path $candidate) { return $candidate }
         }
+
         if ($entry.DisplayIcon) {
             $icon = ([string]$entry.DisplayIcon -replace ',\d+$', '').Trim('"')
             if ($icon -and (Test-Path $icon)) {
@@ -72,21 +91,29 @@ function Find-VSCodeCli {
         (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code\bin\code.cmd'),
         (Join-Path $env:ProgramFiles 'Microsoft VS Code\bin\code.cmd')
     )
+
     $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-    if ($pf86) { $fallbacks += Join-Path $pf86 'Microsoft VS Code\bin\code.cmd' }
+    if ($pf86) {
+        $fallbacks += Join-Path $pf86 'Microsoft VS Code\bin\code.cmd'
+    }
 
     foreach ($candidate in $fallbacks) {
         if ($candidate -and (Test-Path $candidate)) { return $candidate }
     }
+
     return $null
 }
 
 function Find-NodeExe {
-    $node = Find-OnPath 'node.exe'
-    if (-not $node) { $node = Find-OnPath 'node' }
-    if ($node -and (Test-Path $node)) { return $node }
+    foreach ($name in @('node.exe', 'node')) {
+        $node = Find-OnPath $name
+        if ($node -and (Test-Path $node)) { return $node }
+    }
 
-    $entries = Get-UninstallEntries | Where-Object { $_.DisplayName -like 'Node.js*' }
+    $entries = Get-UninstallEntries | Where-Object {
+        $_.DisplayName -like 'Node.js*'
+    }
+
     foreach ($entry in $entries) {
         if ($entry.InstallLocation) {
             $candidate = Join-Path $entry.InstallLocation 'node.exe'
@@ -96,6 +123,118 @@ function Find-NodeExe {
 
     $candidate = Join-Path $env:ProgramFiles 'nodejs\node.exe'
     if (Test-Path $candidate) { return $candidate }
+
+    return $null
+}
+
+function Test-PythonLauncher {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Launcher,
+        [string[]]$PrefixArgs = @()
+    )
+
+    if (-not (Test-Path $Launcher)) { return $null }
+
+    try {
+        $args = @()
+        $args += $PrefixArgs
+        $args += @('-c', 'import sys; print(sys.executable)')
+
+        $output = & $Launcher @args 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $output) {
+            return $null
+        }
+
+        $resolved = ([string]($output | Select-Object -Last 1)).Trim()
+        if (-not $resolved -or -not (Test-Path $resolved)) {
+            return $null
+        }
+
+        return [PSCustomObject]@{
+            Launcher = $Launcher
+            PrefixArgs = @($PrefixArgs)
+            Interpreter = $resolved
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Find-PythonRuntime {
+    $candidates = @()
+
+    foreach ($name in @('pymanager.exe', 'pymanager')) {
+        $cmd = Find-OnPath $name
+        if ($cmd -and (Test-Path $cmd)) {
+            $candidates += [PSCustomObject]@{
+                Launcher = $cmd
+                PrefixArgs = @('exec')
+            }
+        }
+    }
+
+    foreach ($name in @('py.exe', 'py')) {
+        $cmd = Find-OnPath $name
+        if ($cmd -and (Test-Path $cmd)) {
+            $candidates += [PSCustomObject]@{
+                Launcher = $cmd
+                PrefixArgs = @('-3')
+            }
+        }
+    }
+
+    foreach ($name in @('python.exe', 'python', 'python3.exe', 'python3')) {
+        $cmd = Find-OnPath $name
+        if ($cmd -and (Test-Path $cmd)) {
+            $candidates += [PSCustomObject]@{
+                Launcher = $cmd
+                PrefixArgs = @()
+            }
+        }
+    }
+
+    $searchRoots = @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python'),
+        $env:ProgramFiles
+    )
+
+    foreach ($root in $searchRoots) {
+        if (-not $root -or -not (Test-Path $root)) { continue }
+
+        if ($root -like '*Programs\Python') {
+            $files = Get-ChildItem -Path $root -Filter python.exe -File -Recurse -Depth 2 -ErrorAction SilentlyContinue
+        }
+        else {
+            $dirs = Get-ChildItem -Path $root -Directory -Filter 'Python*' -ErrorAction SilentlyContinue
+            $files = @()
+            foreach ($dir in $dirs) {
+                $candidate = Join-Path $dir.FullName 'python.exe'
+                if (Test-Path $candidate) {
+                    $files += Get-Item $candidate
+                }
+            }
+        }
+
+        foreach ($file in $files) {
+            $candidates += [PSCustomObject]@{
+                Launcher = $file.FullName
+                PrefixArgs = @()
+            }
+        }
+    }
+
+    $seen = @{}
+    foreach ($candidate in $candidates) {
+        $key = ($candidate.Launcher + '|' + ($candidate.PrefixArgs -join ' ')).ToLowerInvariant()
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+
+        $runtime = Test-PythonLauncher -Launcher $candidate.Launcher -PrefixArgs $candidate.PrefixArgs
+        if ($runtime) { return $runtime }
+    }
+
     return $null
 }
 
@@ -113,18 +252,30 @@ function Find-MSYS2Root {
             $bin = Split-Path $cmd -Parent
             $usr = Split-Path $bin -Parent
             $root = Split-Path $usr -Parent
-            if (Test-Path (Join-Path $root 'usr\bin\bash.exe')) { return $root }
+            if (Test-Path (Join-Path $root 'usr\bin\bash.exe')) {
+                return $root
+            }
         }
     }
 
-    $entries = Get-UninstallEntries | Where-Object { $_.DisplayName -like 'MSYS2*' }
+    $entries = Get-UninstallEntries | Where-Object {
+        $_.DisplayName -like 'MSYS2*'
+    }
+
     foreach ($entry in $entries) {
         $roots = @()
-        if ($entry.InstallLocation) { $roots += [string]$entry.InstallLocation }
+
+        if ($entry.InstallLocation) {
+            $roots += [string]$entry.InstallLocation
+        }
+
         if ($entry.DisplayIcon) {
             $icon = ([string]$entry.DisplayIcon -replace ',\d+$', '').Trim('"')
-            if ($icon) { $roots += Split-Path $icon -Parent }
+            if ($icon) {
+                $roots += Split-Path $icon -Parent
+            }
         }
+
         foreach ($root in $roots) {
             if ($root -and (Test-Path (Join-Path $root 'usr\bin\bash.exe'))) {
                 return (Resolve-Path $root).Path
@@ -132,74 +283,106 @@ function Find-MSYS2Root {
         }
     }
 
-    $parents = @("$env:SystemDrive\", $env:ProgramFiles, (Join-Path $env:LOCALAPPDATA 'Programs'))
+    $parents = @(
+        "$env:SystemDrive\",
+        $env:ProgramFiles,
+        (Join-Path $env:LOCALAPPDATA 'Programs')
+    )
+
     $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-    if ($pf86) { $parents += $pf86 }
+    if ($pf86) {
+        $parents += $pf86
+    }
 
     foreach ($parent in $parents) {
         if (-not $parent -or -not (Test-Path $parent)) { continue }
-        $dirs = Get-ChildItem -Path $parent -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'msys*' }
+
+        $dirs = Get-ChildItem -Path $parent -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'msys*' }
+
         foreach ($dir in $dirs) {
-            if (Test-Path (Join-Path $dir.FullName 'usr\bin\bash.exe')) { return $dir.FullName }
+            if (Test-Path (Join-Path $dir.FullName 'usr\bin\bash.exe')) {
+                return $dir.FullName
+            }
         }
     }
+
     return $null
 }
 
 function Find-Compiler([string]$Name) {
-    $compiler = Find-OnPath ($Name + '.exe')
-    if (-not $compiler) { $compiler = Find-OnPath $Name }
-    if ($compiler -and (Test-Path $compiler)) { return $compiler }
+    foreach ($candidateName in @($Name + '.exe', $Name)) {
+        $compiler = Find-OnPath $candidateName
+        if ($compiler -and (Test-Path $compiler)) {
+            return $compiler
+        }
+    }
 
     $root = Find-MSYS2Root
     if ($root) {
         $candidate = Join-Path $root ("ucrt64\bin\" + $Name + '.exe')
-        if (Test-Path $candidate) { return $candidate }
+        if (Test-Path $candidate) {
+            return $candidate
+        }
     }
+
     return $null
 }
 
 function Require-Winget {
-    $winget = Find-OnPath 'winget.exe'
-    if (-not $winget) { $winget = Find-OnPath 'winget' }
-    if (-not $winget) {
-        throw 'Windows Package Manager (winget) is required for automatic installation. Install Microsoft App Installer and retry.'
+    foreach ($name in @('winget.exe', 'winget')) {
+        $winget = Find-OnPath $name
+        if ($winget) { return $winget }
     }
-    return $winget
+
+    throw 'Windows Package Manager (winget) is required for automatic installation. Install Microsoft App Installer and retry.'
 }
 
-function Install-WingetPackage([string]$Id) {
+function Install-WingetPackage {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Id,
+        [string]$Source = 'winget'
+    )
+
     $winget = Require-Winget
     Write-Info "Installing package: $Id"
-    & $winget install --id $Id --exact --silent --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity
+
+    & $winget install --id $Id --exact --silent --source $Source --accept-source-agreements --accept-package-agreements --disable-interactivity
     if ($LASTEXITCODE -ne 0) {
-        throw "winget failed to install $Id (exit code $LASTEXITCODE)."
+        throw "winget failed to install $Id from $Source (exit code $LASTEXITCODE)."
     }
+
     Refresh-ProcessPath
+    Reset-DiscoveryCache
 }
 
 function Add-UserPath([string]$Directory) {
     if (-not $Directory -or -not (Test-Path $Directory)) { return }
+
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $parts = @($userPath -split ';' | Where-Object { $_ -and $_.Trim() })
     $exists = $false
+
     foreach ($part in $parts) {
         if ($part.TrimEnd('\') -ieq $Directory.TrimEnd('\')) {
             $exists = $true
             break
         }
     }
+
     if (-not $exists) {
         $newPath = (($parts + $Directory) | Select-Object -Unique) -join ';'
         [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
         Write-Ok "Added to user PATH: $Directory"
+        Refresh-ProcessPath
     }
-    Refresh-ProcessPath
 }
 
 function Ensure-Toolchain {
     $gcc = Find-Compiler 'gcc'
     $gxx = Find-Compiler 'g++'
+
     if ($gcc -and $gxx) {
         Add-UserPath (Split-Path $gcc -Parent)
         Write-Ok "GCC toolchain detected: $gcc"
@@ -208,10 +391,12 @@ function Ensure-Toolchain {
 
     Write-Missing 'GCC/G++ toolchain'
     $root = Find-MSYS2Root
+
     if (-not $root) {
-        Install-WingetPackage 'MSYS2.MSYS2'
+        Install-WingetPackage -Id 'MSYS2.MSYS2'
         $root = Find-MSYS2Root
     }
+
     if (-not $root) {
         throw 'MSYS2 was installed but its installation directory could not be discovered.'
     }
@@ -223,6 +408,7 @@ function Ensure-Toolchain {
 
     Write-Info "MSYS2 detected: $root"
     Write-Info 'Installing the MSYS2 UCRT64 GCC toolchain...'
+
     & $bash -lc 'pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc'
     if ($LASTEXITCODE -ne 0) {
         throw "pacman failed to install the GCC toolchain (exit code $LASTEXITCODE)."
@@ -233,51 +419,111 @@ function Ensure-Toolchain {
 
     $gcc = Find-Compiler 'gcc'
     $gxx = Find-Compiler 'g++'
+
     if (-not $gcc -or -not $gxx) {
         throw 'GCC installation finished, but gcc/g++ could not be resolved.'
     }
+
     Write-Ok "GCC toolchain installed: $gcc"
 }
 
 function Ensure-Node {
     $node = Find-NodeExe
+
     if ($node) {
         Add-UserPath (Split-Path $node -Parent)
         Write-Ok "Node.js detected: $node"
         return
     }
+
     Write-Missing 'Node.js'
-    Install-WingetPackage 'OpenJS.NodeJS.LTS'
+    Install-WingetPackage -Id 'OpenJS.NodeJS.LTS'
+
     $node = Find-NodeExe
     if (-not $node) {
         throw 'Node.js installation finished, but node.exe could not be resolved.'
     }
+
+    Add-UserPath (Split-Path $node -Parent)
     Write-Ok "Node.js installed: $node"
+}
+
+function Ensure-Python {
+    $runtime = Find-PythonRuntime
+
+    if ($runtime) {
+        Write-Ok "Python detected: $($runtime.Interpreter)"
+        return
+    }
+
+    Write-Missing 'Python runtime'
+
+    try {
+        Install-WingetPackage -Id 'Python.PythonInstallManager'
+    }
+    catch {
+        Write-Info 'Python Install Manager package was not available from the winget community source. Trying the Microsoft Store source...'
+        Install-WingetPackage -Id '9NQ7512CXL7T' -Source 'msstore'
+    }
+
+    Refresh-ProcessPath
+
+    $manager = Find-OnPath 'pymanager.exe'
+    if (-not $manager) {
+        $manager = Find-OnPath 'pymanager'
+    }
+
+    if (-not $manager) {
+        $fallback = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pymanager.exe'
+        if (Test-Path $fallback) {
+            $manager = $fallback
+        }
+    }
+
+    if ($manager) {
+        Write-Info 'Preparing the default Python runtime...'
+        & $manager exec -c 'import sys; print(sys.executable)' | Out-Null
+    }
+
+    $runtime = Find-PythonRuntime
+    if (-not $runtime) {
+        throw 'Python installation finished, but a working Python runtime could not be resolved.'
+    }
+
+    Write-Ok "Python installed: $($runtime.Interpreter)"
 }
 
 function Ensure-VSCode {
     $code = Find-VSCodeCli
+
     if ($code) {
         Write-Ok "VS Code CLI detected: $code"
         return
     }
+
     Write-Missing 'Visual Studio Code CLI'
-    Install-WingetPackage 'Microsoft.VisualStudioCode'
+    Install-WingetPackage -Id 'Microsoft.VisualStudioCode'
+
     $code = Find-VSCodeCli
     if (-not $code) {
         throw 'VS Code installation finished, but code.cmd could not be resolved.'
     }
+
     Write-Ok "VS Code CLI installed: $code"
 }
 
 try {
     Refresh-ProcessPath
+
     $all = $Components -contains 'All'
     Write-Info "Bootstrap components: $($Components -join ', ')"
+
     if ($all -or $Components -contains 'Toolchain') { Ensure-Toolchain }
     if ($all -or $Components -contains 'Node') { Ensure-Node }
+    if ($all -or $Components -contains 'Python') { Ensure-Python }
     if ($all -or $Components -contains 'VSCode') { Ensure-VSCode }
-    Write-Host '[READY] Development environment is ready.'
+
+    Write-Host '[READY] Requested development environment components are ready.'
     exit 0
 }
 catch {
