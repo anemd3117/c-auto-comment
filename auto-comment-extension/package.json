@@ -68,17 +68,17 @@
       "editor/title": [
         {
           "command": "autoCommentAfterRun.compileAndComment",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == c_header || resourceExtname == .h || resourceExtname == .hpp || editorLangId == python || editorLangId == javascript",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == python || editorLangId == javascript || resourceExtname == .c || resourceExtname == .cpp || resourceExtname == .cc || resourceExtname == .cxx || resourceExtname == .py || resourceExtname == .pyw || resourceExtname == .js || resourceExtname == .mjs || resourceExtname == .cjs || editorLangId == c_header || resourceExtname == .h || resourceExtname == .hpp || resourceExtname == .hh || resourceExtname == .hxx",
           "group": "navigation@1"
         },
         {
           "command": "autoCommentAfterRun.runAndComment",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == python || editorLangId == javascript",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == python || editorLangId == javascript || resourceExtname == .c || resourceExtname == .cpp || resourceExtname == .cc || resourceExtname == .cxx || resourceExtname == .py || resourceExtname == .pyw || resourceExtname == .js || resourceExtname == .mjs || resourceExtname == .cjs",
           "group": "navigation@2"
         },
         {
           "command": "autoCommentAfterRun.commentCurrentFile",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == c_header || resourceExtname == .h || resourceExtname == .hpp || editorLangId == python || editorLangId == javascript",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == python || editorLangId == javascript || resourceExtname == .c || resourceExtname == .cpp || resourceExtname == .cc || resourceExtname == .cxx || resourceExtname == .py || resourceExtname == .pyw || resourceExtname == .js || resourceExtname == .mjs || resourceExtname == .cjs || editorLangId == c_header || resourceExtname == .h || resourceExtname == .hpp || resourceExtname == .hh || resourceExtname == .hxx",
           "group": "navigation@3"
         }
       ]
