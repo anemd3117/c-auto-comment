@@ -201,6 +201,7 @@ function Ensure-Toolchain {
     $gcc = Find-Compiler 'gcc'
     $gxx = Find-Compiler 'g++'
     if ($gcc -and $gxx) {
+        Add-UserPath (Split-Path $gcc -Parent)
         Write-Ok "GCC toolchain detected: $gcc"
         return
     }
@@ -241,6 +242,7 @@ function Ensure-Toolchain {
 function Ensure-Node {
     $node = Find-NodeExe
     if ($node) {
+        Add-UserPath (Split-Path $node -Parent)
         Write-Ok "Node.js detected: $node"
         return
     }
