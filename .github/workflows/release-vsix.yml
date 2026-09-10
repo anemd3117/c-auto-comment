@@ -121,20 +121,25 @@ jobs:
             exit 1
           }
 
-          if ($installer -notmatch '-Components\s+Ripgrep') {
-            Write-Error 'Installer must prepare ripgrep for Todo Tree.'
+          if ($installer -match '-Components\s+Ripgrep') {
+            Write-Error 'Installer must not bootstrap external ripgrep for Better Todo Tree.'
             exit 1
           }
 
           $configure = Get-Content -Raw 'scripts\configure-vscode.ps1'
 
-          if ($configure -notmatch 'todo-tree\.ripgrep\.ripgrep') {
-            Write-Error 'Todo Tree ripgrep setting repair is missing.'
+          if ($configure -notmatch "Remove-ExtensionIfPresent 'Gruntfuggly\.todo-tree'") {
+            Write-Error 'Legacy Todo Tree removal is missing.'
             exit 1
           }
 
-          if ($configure -notmatch 'Gruntfuggly\.todo-tree') {
-            Write-Error 'Todo Tree extension setup is missing.'
+          if ($configure -notmatch "Ensure-Extension 'FanaticPythoner\.better-todo-tree'") {
+            Write-Error 'Maintained Better Todo Tree setup is missing.'
+            exit 1
+          }
+
+          if ($configure -notmatch 'better-todo-tree\.ripgrep\.ripgrep') {
+            Write-Error 'Better Todo Tree packaged-ripgrep configuration is missing.'
             exit 1
           }
 
@@ -203,5 +208,5 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Auto Comment v$VERSION" \
-              --notes "Portable ripgrep/Todo Tree repair, Python/Pylance setup, legacy extension cleanup, path-independent debugger settings, and the fast lazy bootstrap from v0.0.11."
+              --notes "Replaces the broken legacy Todo Tree with maintained Better Todo Tree, uses its packaged ripgrep, keeps Python/Pylance repair, and avoids external ripgrep/PATH dependency during installation."
           fi
