@@ -1,9 +1,6 @@
 param(
     [Parameter(Mandatory=$true)]
-    [string]$CodePath,
-
-    [Parameter(Mandatory=$true)]
-    [string]$RipgrepPath
+    [string]$CodePath
 )
 
 Set-StrictMode -Version Latest
@@ -137,22 +134,41 @@ function Remove-JsoncBooleanProperty {
     }
 }
 
+
+function Remove-JsoncStringProperty {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory=$true)]
+        [string]$PropertyName
+    )
+
+    if (-not (Test-Path $FilePath)) { return }
+
+    $text = [IO.File]::ReadAllText($FilePath)
+    $escaped = [Regex]::Escape($PropertyName)
+    $pattern = '(?m)^[ \t]*"' + $escaped + '"[ \t]*:[ \t]*"(?:\\.|[^"\\])*"[ \t]*,?[ \t]*\r?\n'
+    $newText = [Regex]::Replace($text, $pattern, '')
+
+    if ($newText -ne $text) {
+        [IO.File]::WriteAllText($FilePath, $newText, [Text.UTF8Encoding]::new($false))
+        Write-Ok "Removed obsolete setting: $PropertyName"
+    }
+}
+
 try {
     if (-not (Test-Path $CodePath)) {
         throw "VS Code CLI was not found: $CodePath"
     }
-
-    if (-not (Test-Path $RipgrepPath)) {
-        throw "ripgrep executable was not found: $RipgrepPath"
-    }
-
     Write-Info 'Repairing VS Code support extensions...'
 
+    Remove-ExtensionIfPresent 'Gruntfuggly.todo-tree'
     Remove-ExtensionIfPresent 'TabNine.tabnine-vscode'
     Remove-ExtensionIfPresent 'VisualStudioExptTeam.intellicode-api-usage-examples'
     Remove-ExtensionIfPresent 'VisualStudioExptTeam.vscodeintellicode'
 
-    Ensure-Extension 'Gruntfuggly.todo-tree'
+    Ensure-Extension 'FanaticPythoner.better-todo-tree'
     Ensure-Extension 'ms-python.python'
     Ensure-Extension 'ms-python.vscode-pylance'
 
@@ -164,10 +180,12 @@ try {
         Write-Ok "VS Code settings backup created: $backup"
     }
 
-    Set-JsoncRootStringProperty -FilePath $settingsFile -PropertyName 'todo-tree.ripgrep.ripgrep' -Value $RipgrepPath
+    Remove-JsoncStringProperty -FilePath $settingsFile -PropertyName 'todo-tree.ripgrep.ripgrep'
+    Remove-JsoncStringProperty -FilePath $settingsFile -PropertyName 'todo-tree.ripgrep'
+    Set-JsoncRootStringProperty -FilePath $settingsFile -PropertyName 'better-todo-tree.ripgrep.ripgrep' -Value ''
     Remove-JsoncBooleanProperty -FilePath $settingsFile -PropertyName 'tabnine.experimentalAutoImports'
 
-    Write-Ok "Todo Tree ripgrep path configured: $RipgrepPath"
+    Write-Ok 'Better Todo Tree configured to use its packaged ripgrep binary.'
     Write-Host '[READY] VS Code support repair completed.'
     exit 0
 }
