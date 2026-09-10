@@ -2,7 +2,7 @@
   "name": "auto-comment-after-run",
   "displayName": "Auto Comment After Run",
   "description": "Fast portable C/C++/Python/JavaScript smart build with persistent multilingual beginner-friendly learning comments.",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -37,6 +37,7 @@
     "onCommand:autoCommentAfterRun.runAndComment",
     "onCommand:autoCommentAfterRun.commentCurrentFile",
     "onCommand:autoCommentAfterRun.changeCommentLanguage",
+    "onCommand:autoCommentAfterRun.undoLastLanguageChange",
     "onCommand:autoCommentAfterRun.resetCommentLanguage"
   ],
   "main": "./entry.js",
@@ -64,6 +65,11 @@
         "command": "autoCommentAfterRun.changeCommentLanguage",
         "title": "Auto Comment: Change Comment Language",
         "icon": "$(globe)"
+      },
+      {
+        "command": "autoCommentAfterRun.undoLastLanguageChange",
+        "title": "Auto Comment: Undo Last Language Change",
+        "icon": "$(discard)"
       },
       {
         "command": "autoCommentAfterRun.resetCommentLanguage",

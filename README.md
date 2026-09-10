@@ -2,29 +2,34 @@
 
 Portable VS Code tooling that validates or runs supported source files and adds beginner-friendly learning comments automatically.
 
-## v0.0.17 — multilingual first-run comment language
+## v0.0.18 — multilingual language history and undo
 
-Auto Comment no longer assumes the user is Korean.
+Auto Comment asks for the comment language on the first real comment operation, stores that BCP 47 locale in VS Code global state, and reuses it automatically afterward.
 
-The first time the user actually generates comments, Auto Comment opens a language picker. The selected language is stored in VS Code global state and is reused automatically for every later comment operation, even after VS Code is restarted or another project is opened.
+v0.0.18 adds safer recovery when a user chooses the wrong language:
 
 ```text
-First comment operation
-  -> no saved comment language
-  -> show language picker
-  -> user chooses a language
-  -> save the BCP 47 locale in VS Code globalState
-  -> generate comments in that language
+Choose language A
+  -> save A as current language
 
-Later F6 / Run / Comment Current File
-  -> read the saved locale
-  -> do not ask again
-  -> generate comments in the saved language automatically
+Change to language B
+  -> keep A as previous language
+  -> save B as current language
+
+Auto Comment: Undo Last Language Change
+  -> restore A immediately
+  -> keep B as the previous value so the user can switch back again if needed
+  -> translate recognized Auto Comment-generated comments in the active file to the restored language
+
+Auto Comment: Reset Comment Language
+  -> show a confirmation dialog
+  -> clear both current and previous language history
+  -> ask for a language again on the next comment operation
 ```
 
 ### Built-in translated comment catalogs
 
-v0.0.17 ships translated learning-comment catalogs for:
+Auto Comment ships translated learning-comment catalogs for:
 
 - Korean — `ko-KR`
 - English — `en-US`, with `en-GB` alias
@@ -44,24 +49,21 @@ v0.0.17 ships translated learning-comment catalogs for:
 
 The picker also provides **Other / Custom language or locale**. Any BCP 47-style locale can be saved, such as `nl-NL`, `tr-TR`, `th-TH`, `id-ID`, or `pl-PL`. If a native catalog is not bundled yet, comments safely fall back to English instead of failing.
 
-This keeps the locale system open-ended: new language catalogs can be added without changing the compiler/runtime logic.
-
 ### Language management
 
-The selection is remembered automatically. Users can change it at any time from the Command Palette:
+The selection is remembered automatically. Users can manage it at any time from the Command Palette:
 
 ```text
 Auto Comment: Change Comment Language
+Auto Comment: Undo Last Language Change
 Auto Comment: Reset Comment Language
 ```
 
-Reset removes the saved preference. The next comment operation opens the first-run language picker again.
-
-Known Auto Comment-generated comments can also be recognized across bundled languages, so changing the selected language does not require changing compiler or runtime settings.
+Changing or undoing the language immediately retranslates recognized Auto Comment-generated comments in the active file. Reset is destructive to the saved language history, so v0.0.18 asks for confirmation first.
 
 ## Python / external-PC portability
 
-The v0.0.16 external-PC repair remains enabled:
+The external-PC repair remains enabled:
 
 - verifies Python during installer setup
 - discovers the standard per-user Python Launcher outside PATH
@@ -100,6 +102,7 @@ cd c-auto-comment
 - **Run and Auto Comment**
 - **Add Comments to Current File**
 - **Auto Comment: Change Comment Language**
+- **Auto Comment: Undo Last Language Change**
 - **Auto Comment: Reset Comment Language**
 
 ## Encoding policy
