@@ -55,63 +55,6 @@ function Remove-ExtensionIfPresent([string]$Id) {
     Write-Ok "Removed VS Code extension: $Id"
 }
 
-function Escape-JsonString([string]$Value) {
-    return $Value.Replace('\', '\\').Replace('"', '\"')
-}
-
-function Set-JsoncRootStringProperty {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$FilePath,
-
-        [Parameter(Mandatory=$true)]
-        [string]$PropertyName,
-
-        [Parameter(Mandatory=$true)]
-        [string]$Value
-    )
-
-    $dir = Split-Path $FilePath -Parent
-    New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    $nl = [Environment]::NewLine
-
-    if (-not (Test-Path $FilePath)) {
-        [IO.File]::WriteAllText($FilePath, '{' + $nl + '}' + $nl, [Text.UTF8Encoding]::new($false))
-    }
-
-    $text = [IO.File]::ReadAllText($FilePath)
-    $escapedName = [Regex]::Escape($PropertyName)
-    $escapedValue = Escape-JsonString $Value
-    $replacement = '"' + $PropertyName + '": "' + $escapedValue + '"'
-    $pattern = '"' + $escapedName + '"\s*:\s*"(?:\\.|[^"\\])*"'
-
-    if ([Regex]::IsMatch($text, $pattern)) {
-        $text = [Regex]::Replace($text, $pattern, $replacement, 1)
-    }
-    else {
-        $index = $text.LastIndexOf('}')
-        if ($index -lt 0) {
-            throw "VS Code settings file does not contain a root closing brace: $FilePath"
-        }
-
-        $before = $text.Substring(0, $index).TrimEnd()
-        $after = $text.Substring($index)
-
-        $needsComma = $true
-        if ($before.EndsWith('{') -or $before.EndsWith(',')) {
-            $needsComma = $false
-        }
-
-        $insert = ''
-        if ($needsComma) { $insert += ',' }
-        $insert += $nl + '    ' + $replacement + $nl
-
-        $text = $before + $insert + $after
-    }
-
-    [IO.File]::WriteAllText($FilePath, $text, [Text.UTF8Encoding]::new($false))
-}
-
 function Remove-JsoncBooleanProperty {
     param(
         [Parameter(Mandatory=$true)]
@@ -182,10 +125,10 @@ try {
 
     Remove-JsoncStringProperty -FilePath $settingsFile -PropertyName 'todo-tree.ripgrep.ripgrep'
     Remove-JsoncStringProperty -FilePath $settingsFile -PropertyName 'todo-tree.ripgrep'
-    Set-JsoncRootStringProperty -FilePath $settingsFile -PropertyName 'better-todo-tree.ripgrep.ripgrep' -Value ''
+    Remove-JsoncStringProperty -FilePath $settingsFile -PropertyName 'better-todo-tree.ripgrep.ripgrep'
     Remove-JsoncBooleanProperty -FilePath $settingsFile -PropertyName 'tabnine.experimentalAutoImports'
 
-    Write-Ok 'Better Todo Tree configured to use its packaged ripgrep binary.'
+    Write-Ok 'Better Todo Tree will use its packaged ripgrep binary by default.'
     Write-Host '[READY] VS Code support repair completed.'
     exit 0
 }

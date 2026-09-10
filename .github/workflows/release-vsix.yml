@@ -138,8 +138,13 @@ jobs:
             exit 1
           }
 
-          if ($configure -notmatch 'better-todo-tree\.ripgrep\.ripgrep') {
-            Write-Error 'Better Todo Tree packaged-ripgrep configuration is missing.'
+          if ($configure -match "Set-JsoncRootStringProperty.*better-todo-tree\.ripgrep\.ripgrep.*-Value\s+''") {
+            Write-Error 'Better Todo Tree must not receive an empty ripgrep setting value.'
+            exit 1
+          }
+
+          if ($configure -notmatch "Remove-JsoncStringProperty.*better-todo-tree\.ripgrep\.ripgrep") {
+            Write-Error 'Better Todo Tree ripgrep override cleanup is missing.'
             exit 1
           }
 
@@ -208,5 +213,5 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Auto Comment v$VERSION" \
-              --notes "Replaces the broken legacy Todo Tree with maintained Better Todo Tree, uses its packaged ripgrep, keeps Python/Pylance repair, and avoids external ripgrep/PATH dependency during installation."
+              --notes "Fixes the v0.0.13 empty-string PowerShell binding failure and lets Better Todo Tree use its packaged ripgrep by leaving the override unset."
           fi
