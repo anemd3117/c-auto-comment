@@ -2,22 +2,26 @@
 
 Portable VS Code extension for C/C++, Python, and JavaScript learning workflows.
 
-Version 0.0.16 fixes external Windows PCs where Python exists but VS Code or another runner still reports that Python is not installed or is not available on PATH.
+## v0.0.17
 
-- Python is verified during installer setup instead of waiting for first use
-- the standard per-user Python Launcher is discovered outside PATH
-- the real interpreter is validated with `sys.executable`
-- both launcher and interpreter directories are persisted to User PATH
-- VS Code `python.defaultInterpreterPath` is set to the verified absolute interpreter path
-- Auto Comment continues to use the verified absolute interpreter path directly
-- legacy Todo Tree is replaced by Better Todo Tree
-- Python and Pylance support extensions are kept installed
-- GCC and Node.js remain lazy
+This version adds persistent multilingual learning comments.
 
-After installation, fully restart VS Code so the extension host and new terminals inherit the repaired environment.
+- first comment operation opens a language picker
+- the selected BCP 47 locale is stored in VS Code global state
+- later comment operations reuse the saved language automatically
+- the language choice survives VS Code restarts and project changes
+- users can change or reset the language from the Command Palette
+- built-in translated catalogs cover Korean, English, Japanese, Simplified Chinese, Traditional Chinese, French, German, Spanish, Portuguese, Russian, Arabic, Hindi, and Vietnamese
+- custom BCP 47 locale input is supported for additional languages
+- unsupported custom locales fall back to English rather than failing
+- existing generated comments from bundled languages can be recognized and translated when the active language changes
+- external-PC Python/PATH repair from v0.0.16 remains enabled
+- legacy Todo Tree is still replaced by Better Todo Tree
 
 Commands:
 
 - Compile and Auto Comment
 - Run and Auto Comment
 - Add Comments to Current File
+- Auto Comment: Change Comment Language
+- Auto Comment: Reset Comment Language
