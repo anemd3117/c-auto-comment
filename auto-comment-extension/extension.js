@@ -509,6 +509,25 @@ function isHeaderFile(filePath) {
 }
 
 /**
+ * 오래된 교재/컴파일러 방식의 C inline 정의를 자동 감지한다.
+ * ISO C 방식에서는 `inline int fn(...) { ... }`가 외부 정의를 별도로
+ * 요구할 수 있으므로, 해당 코드에만 GNU89 inline 의미를 적용한다.
+ */
+function getCCompatibilityFlags(language, filePath) {
+    if (language !== 'c' || path.extname(filePath).toLowerCase() !== '.c') {
+        return [];
+    }
+
+    try {
+        const source = fs.readFileSync(filePath, 'utf8');
+        const hasLegacyInlineDefinition = /^\s*inline\s+[\w\s*]+\([^;{}]*\)\s*\{/m.test(source);
+        return hasLegacyInlineDefinition ? ['-fgnu89-inline'] : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
  * 컴파일(빌드) 검증 후 즉시 학습용 한글 주석 추가
  */
 async function compileAndComment() {
@@ -694,13 +713,17 @@ function getCompileCommand(language, filePath, workspacePath) {
             'auto-comment-' + crypto.randomUUID() + '.exe'
         );
         const quotedOutput = quote(outputPath);
+        const compatibilityFlags = getCCompatibilityFlags(language, filePath);
+        const displayedCompatibilityFlags = compatibilityFlags.length
+            ? ' ' + compatibilityFlags.join(' ')
+            : '';
 
         return {
             executable,
-            args: ['-x', language === 'cpp' ? 'c++' : 'c', '-finput-charset=UTF-8', '-fexec-charset=UTF-8', filePath, '-o', outputPath],
+            args: ['-x', language === 'cpp' ? 'c++' : 'c', ...compatibilityFlags, '-finput-charset=UTF-8', '-fexec-charset=UTF-8', filePath, '-o', outputPath],
             outputPath,
             runCommandString: '& ' + quotedOutput,
-            displayCommand: compiler + ' -x ' + (language === 'cpp' ? 'c++' : 'c') + ' ' + quotedFile + ' -o ' + quotedOutput
+            displayCommand: compiler + ' -x ' + (language === 'cpp' ? 'c++' : 'c') + displayedCompatibilityFlags + ' ' + quotedFile + ' -o ' + quotedOutput
         };
     }
 
