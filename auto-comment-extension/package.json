@@ -1,8 +1,8 @@
 {
   "name": "auto-comment-after-run",
   "displayName": "Auto Comment After Run",
-  "description": "Fast portable C/C++/Python/JavaScript smart build and automatic beginner-friendly Korean learning comments with portable runtime bootstrap.",
-  "version": "0.0.16",
+  "description": "Fast portable C/C++/Python/JavaScript smart build with persistent multilingual beginner-friendly learning comments.",
+  "version": "0.0.17",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -24,7 +24,9 @@
     "gcc",
     "learning",
     "comments",
-    "portable"
+    "portable",
+    "multilingual",
+    "i18n"
   ],
   "activationEvents": [
     "onLanguage:c",
@@ -33,9 +35,11 @@
     "onLanguage:javascript",
     "onCommand:autoCommentAfterRun.compileAndComment",
     "onCommand:autoCommentAfterRun.runAndComment",
-    "onCommand:autoCommentAfterRun.commentCurrentFile"
+    "onCommand:autoCommentAfterRun.commentCurrentFile",
+    "onCommand:autoCommentAfterRun.changeCommentLanguage",
+    "onCommand:autoCommentAfterRun.resetCommentLanguage"
   ],
-  "main": "./extension.js",
+  "main": "./entry.js",
   "scripts": {
     "package": "npx --yes @vscode/vsce package"
   },
@@ -55,6 +59,15 @@
         "command": "autoCommentAfterRun.commentCurrentFile",
         "title": "Add Comments to Current File",
         "icon": "$(comment)"
+      },
+      {
+        "command": "autoCommentAfterRun.changeCommentLanguage",
+        "title": "Auto Comment: Change Comment Language",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "autoCommentAfterRun.resetCommentLanguage",
+        "title": "Auto Comment: Reset Comment Language"
       }
     ],
     "keybindings": [
