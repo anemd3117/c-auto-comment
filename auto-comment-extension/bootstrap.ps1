@@ -165,6 +165,39 @@ function Test-PythonLauncher {
 function Find-PythonRuntime {
     $candidates = @()
 
+    $knownLaunchers = @(
+        [PSCustomObject]@{
+            Launcher = (Join-Path $env:LOCALAPPDATA 'Programs\Python\Launcher\py.exe')
+            PrefixArgs = @()
+        },
+        [PSCustomObject]@{
+            Launcher = (Join-Path $env:LOCALAPPDATA 'Programs\Python\Launcher\pymanager.exe')
+            PrefixArgs = @('exec')
+        },
+        [PSCustomObject]@{
+            Launcher = (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pymanager.exe')
+            PrefixArgs = @('exec')
+        },
+        [PSCustomObject]@{
+            Launcher = (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\py.exe')
+            PrefixArgs = @()
+        },
+        [PSCustomObject]@{
+            Launcher = (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\python.exe')
+            PrefixArgs = @()
+        },
+        [PSCustomObject]@{
+            Launcher = (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\python3.exe')
+            PrefixArgs = @()
+        }
+    )
+
+    foreach ($candidate in $knownLaunchers) {
+        if ($candidate.Launcher -and (Test-Path $candidate.Launcher)) {
+            $candidates += $candidate
+        }
+    }
+
     foreach ($name in @('pymanager.exe', 'pymanager')) {
         $cmd = Find-OnPath $name
         if ($cmd -and (Test-Path $cmd)) {
@@ -509,7 +542,10 @@ function Ensure-Python {
     $runtime = Find-PythonRuntime
 
     if ($runtime) {
-        Write-Ok "Python detected: $($runtime.Interpreter)"
+        Add-UserPath (Split-Path $runtime.Launcher -Parent)
+        Add-UserPath (Split-Path $runtime.Interpreter -Parent)
+        Write-Ok "Python launcher detected: $($runtime.Launcher)"
+        Write-Ok "Python interpreter detected: $($runtime.Interpreter)"
         return
     }
 
@@ -547,7 +583,11 @@ function Ensure-Python {
         throw 'Python installation finished, but a working Python runtime could not be resolved.'
     }
 
-    Write-Ok "Python installed: $($runtime.Interpreter)"
+    Add-UserPath (Split-Path $runtime.Launcher -Parent)
+    Add-UserPath (Split-Path $runtime.Interpreter -Parent)
+
+    Write-Ok "Python launcher ready: $($runtime.Launcher)"
+    Write-Ok "Python interpreter ready: $($runtime.Interpreter)"
 }
 
 function Ensure-VSCode {
