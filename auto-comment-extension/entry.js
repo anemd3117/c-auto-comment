@@ -10,6 +10,7 @@ const {
 } = require('./localization');
 
 const LANGUAGE_STATE_KEY = 'autoCommentAfterRun.commentLanguage';
+const PREVIOUS_LANGUAGE_STATE_KEY = 'autoCommentAfterRun.previousCommentLanguage';
 let extensionContext = null;
 
 function detectLanguage(document) {
@@ -22,13 +23,29 @@ function detectLanguage(document) {
     return document.languageId || ext.replace(/^\./, '');
 }
 
-async function saveLocale(context, locale) {
-    await context.globalState.update(LANGUAGE_STATE_KEY, locale);
+function readLocaleState(context, key) {
+    const saved = context.globalState.get(key);
+    return typeof saved === 'string' && saved.trim() ? normalizeLocale(saved.trim()) : null;
 }
 
 function getSavedLocale(context) {
-    const saved = context.globalState.get(LANGUAGE_STATE_KEY);
-    return typeof saved === 'string' && saved.trim() ? normalizeLocale(saved.trim()) : null;
+    return readLocaleState(context, LANGUAGE_STATE_KEY);
+}
+
+function getPreviousLocale(context) {
+    return readLocaleState(context, PREVIOUS_LANGUAGE_STATE_KEY);
+}
+
+async function saveLocale(context, locale) {
+    const normalized = normalizeLocale(locale);
+    const current = getSavedLocale(context);
+
+    if (current && current !== normalized) {
+        await context.globalState.update(PREVIOUS_LANGUAGE_STATE_KEY, current);
+    }
+
+    await context.globalState.update(LANGUAGE_STATE_KEY, normalized);
+    return normalized;
 }
 
 async function pickCommentLanguage(context) {
@@ -65,9 +82,9 @@ async function pickCommentLanguage(context) {
             prompt: 'Enter a BCP 47 language/locale code',
             placeHolder: 'Examples: nl-NL, tr-TR, th-TH, id-ID, pl-PL',
             validateInput: (input) => {
-                const value = String(input || '').trim();
-                if (!value) return 'Enter a language or locale code.';
-                if (!/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(value)) {
+                const custom = String(input || '').trim();
+                if (!custom) return 'Enter a language or locale code.';
+                if (!/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(custom)) {
                     return 'Use a BCP 47 style code such as en-US, ja-JP, es-MX, or nl-NL.';
                 }
                 return null;
@@ -81,7 +98,7 @@ async function pickCommentLanguage(context) {
         locale = normalizeLocale(value);
     }
 
-    await saveLocale(context, locale);
+    locale = await saveLocale(context, locale);
 
     if (!hasBuiltInCatalog(locale)) {
         vscode.window.showWarningMessage(
@@ -100,13 +117,57 @@ async function ensureCommentLanguage(context) {
 
 async function changeCommentLanguage() {
     if (!extensionContext) return;
-    await pickCommentLanguage(extensionContext);
+
+    const previous = getSavedLocale(extensionContext);
+    const selected = await pickCommentLanguage(extensionContext);
+    if (!selected || selected === previous) return;
+
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+        await translateEditorComments(editor, selected);
+    }
+}
+
+async function undoLastLanguageChange() {
+    if (!extensionContext) return;
+
+    const current = getSavedLocale(extensionContext);
+    const previous = getPreviousLocale(extensionContext);
+
+    if (!previous) {
+        vscode.window.showInformationMessage('There is no previous Auto Comment language to restore.');
+        return;
+    }
+
+    await extensionContext.globalState.update(LANGUAGE_STATE_KEY, previous);
+    await extensionContext.globalState.update(PREVIOUS_LANGUAGE_STATE_KEY, current || undefined);
+
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+        await translateEditorComments(editor, previous);
+    }
+
+    vscode.window.showInformationMessage(
+        `Auto Comment language restored to ${getLanguageLabel(previous)}.`
+    );
 }
 
 async function resetCommentLanguage() {
     if (!extensionContext) return;
+
+    const choice = await vscode.window.showWarningMessage(
+        'Reset the saved Auto Comment language? You will be asked to choose again the next time comments are generated.',
+        { modal: true },
+        'Reset Language'
+    );
+
+    if (choice !== 'Reset Language') return;
+
     await extensionContext.globalState.update(LANGUAGE_STATE_KEY, undefined);
-    vscode.window.showInformationMessage('Auto Comment language preference was reset. You will be asked again the next time comments are generated.');
+    await extensionContext.globalState.update(PREVIOUS_LANGUAGE_STATE_KEY, undefined);
+    vscode.window.showInformationMessage(
+        'Auto Comment language preference was reset. You will be asked again the next time comments are generated.'
+    );
 }
 
 async function translateEditorComments(editor, locale) {
@@ -193,6 +254,11 @@ function activate(context) {
         changeCommentLanguage
     );
 
+    const undoLanguageCommand = vscode.commands.registerCommand(
+        'autoCommentAfterRun.undoLastLanguageChange',
+        undoLastLanguageChange
+    );
+
     const resetLanguageCommand = vscode.commands.registerCommand(
         'autoCommentAfterRun.resetCommentLanguage',
         resetCommentLanguage
@@ -226,6 +292,7 @@ function activate(context) {
         runCommand,
         commentCommand,
         changeLanguageCommand,
+        undoLanguageCommand,
         resetLanguageCommand,
         taskEndDisposable
     );
@@ -245,6 +312,7 @@ module.exports = {
     runAndComment,
     commentCurrentFile,
     changeCommentLanguage,
+    undoLastLanguageChange,
     resetCommentLanguage,
     translateEditorComments
 };
