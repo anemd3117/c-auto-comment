@@ -13,6 +13,7 @@ try {
 
 $env:LANG = 'C.UTF-8'
 $env:LC_ALL = 'C.UTF-8'
+$env:PYTHONUTF8 = '1'
 
 function Write-Info([string]$Message) { Write-Host "[INFO] $Message" }
 function Write-Ok([string]$Message) { Write-Host "[OK] $Message" }
@@ -87,11 +88,16 @@ try {
     Write-Host '===================================================='
     Write-Host "[Auto Comment] Portable installer v$version"
     Write-Host '===================================================='
-    Write-Info 'Checking the VS Code host and repairing compatible support extensions...'
+    Write-Info 'Checking VS Code and preparing a verified Python runtime...'
 
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Components VSCode
     if ($LASTEXITCODE -ne 0) {
         throw "VS Code bootstrap failed (exit code $LASTEXITCODE)."
+    }
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Components Python
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python bootstrap failed (exit code $LASTEXITCODE)."
     }
 
     Refresh-ProcessPath
@@ -163,7 +169,7 @@ try {
 
     Write-Ok "Verified extension: $expected"
     Write-Host '[READY] Auto Comment installation completed successfully.'
-    Write-Info 'Restart VS Code or run "Developer: Reload Window".'
+    Write-Info 'Fully restart VS Code so Python, Code Runner, and terminals inherit the repaired User PATH.'
     exit 0
 }
 catch {
