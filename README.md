@@ -2,9 +2,9 @@
 
 Portable VS Code tooling that validates or runs supported source files and adds beginner-friendly Korean learning comments automatically.
 
-## v0.0.13
+## v0.0.14
 
-This hotfix replaces the legacy Todo Tree extension that breaks on newer VS Code releases.
+This hotfix fixes the v0.0.13 installer failure that occurred after Better Todo Tree was installed.
 
 ### Why this change was necessary
 
@@ -22,7 +22,8 @@ Installing `rg.exe` system-wide or repairing PATH does not reliably solve that u
 - installs the actively maintained `FanaticPythoner.better-todo-tree`
 - uses Better Todo Tree's packaged ripgrep binary
 - removes the old external ripgrep override from VS Code settings
-- sets `better-todo-tree.ripgrep.ripgrep` to the packaged/default binary
+- removes any `better-todo-tree.ripgrep.ripgrep` override so Better Todo Tree uses its packaged/default ripgrep automatically
+- no longer writes an empty ripgrep path into VS Code settings
 - no longer installs or repairs external ripgrep just for Todo Tree
 - keeps Microsoft Python and Pylance setup
 - keeps cleanup of unsupported Tabnine and legacy IntelliCode extensions
