@@ -158,12 +158,126 @@ function probePython(executable, prefixArgs = []) {
     }
 }
 
+function addPythonCandidate(list, executable, prefixArgs = []) {
+    if (!executable) {
+        return;
+    }
+
+    try {
+        if (fs.existsSync(executable)) {
+            list.push({
+                executable,
+                prefixArgs: [...prefixArgs]
+            });
+        }
+    } catch {}
+}
+
+function getWindowsPythonFilesystemCandidates() {
+    const candidates = [];
+
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const programFiles = process.env.ProgramFiles || '';
+    const programFilesX86 = process.env['ProgramFiles(x86)'] || '';
+
+    if (localAppData) {
+        const pythonRoot = path.join(localAppData, 'Programs', 'Python');
+
+        addPythonCandidate(
+            candidates,
+            path.join(pythonRoot, 'Launcher', 'py.exe'),
+            []
+        );
+
+        addPythonCandidate(
+            candidates,
+            path.join(pythonRoot, 'Launcher', 'pymanager.exe'),
+            ['exec']
+        );
+
+        try {
+            if (fs.existsSync(pythonRoot)) {
+                for (const entry of fs.readdirSync(pythonRoot, { withFileTypes: true })) {
+                    if (!entry.isDirectory()) {
+                        continue;
+                    }
+
+                    const dir = path.join(pythonRoot, entry.name);
+
+                    addPythonCandidate(candidates, path.join(dir, 'python.exe'), []);
+                    addPythonCandidate(candidates, path.join(dir, 'python3.exe'), []);
+
+                    try {
+                        for (const nested of fs.readdirSync(dir, { withFileTypes: true })) {
+                            if (!nested.isDirectory()) {
+                                continue;
+                            }
+
+                            const nestedDir = path.join(dir, nested.name);
+                            addPythonCandidate(candidates, path.join(nestedDir, 'python.exe'), []);
+                            addPythonCandidate(candidates, path.join(nestedDir, 'python3.exe'), []);
+                        }
+                    } catch {}
+                }
+            }
+        } catch {}
+
+        const windowsApps = path.join(localAppData, 'Microsoft', 'WindowsApps');
+        addPythonCandidate(candidates, path.join(windowsApps, 'pymanager.exe'), ['exec']);
+        addPythonCandidate(candidates, path.join(windowsApps, 'py.exe'), []);
+        addPythonCandidate(candidates, path.join(windowsApps, 'python.exe'), []);
+        addPythonCandidate(candidates, path.join(windowsApps, 'python3.exe'), []);
+    }
+
+    for (const root of [programFiles, programFilesX86].filter(Boolean)) {
+        try {
+            if (!fs.existsSync(root)) {
+                continue;
+            }
+
+            for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+                if (!entry.isDirectory() || !/^Python/i.test(entry.name)) {
+                    continue;
+                }
+
+                const dir = path.join(root, entry.name);
+                addPythonCandidate(candidates, path.join(dir, 'python.exe'), []);
+                addPythonCandidate(candidates, path.join(dir, 'python3.exe'), []);
+            }
+        } catch {}
+    }
+
+    return candidates;
+}
+
+function normalizePythonRuntime(runtime) {
+    if (!runtime || !runtime.interpreter) {
+        return null;
+    }
+
+    try {
+        if (!fs.existsSync(runtime.interpreter)) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+
+    return {
+        executable: runtime.interpreter,
+        prefixArgs: [],
+        interpreter: runtime.interpreter,
+        launcher: runtime.executable,
+        launcherPrefixArgs: [...(runtime.prefixArgs || [])]
+    };
+}
+
 function findPythonRuntime(force = false) {
     if (!force && pythonRuntimeCache !== undefined) {
         return pythonRuntimeCache;
     }
 
-    const candidates = process.platform === 'win32'
+    const pathCandidates = process.platform === 'win32'
         ? [
             { name: 'pymanager', prefixArgs: ['exec'] },
             { name: 'py', prefixArgs: [] },
@@ -175,22 +289,49 @@ function findPythonRuntime(force = false) {
             { name: 'python', prefixArgs: [] }
         ];
 
-    const tryCurrentPath = () => {
-        for (const candidate of candidates) {
+    const tryPathCandidates = () => {
+        for (const candidate of pathCandidates) {
             const executable = searchExecutableOnPath(candidate.name);
             const runtime = probePython(executable, candidate.prefixArgs);
             if (runtime) {
-                return runtime;
+                return normalizePythonRuntime(runtime);
             }
         }
+
         return null;
     };
 
-    let runtime = tryCurrentPath();
+    const tryFilesystemCandidates = () => {
+        if (process.platform !== 'win32') {
+            return null;
+        }
+
+        const seen = new Set();
+
+        for (const candidate of getWindowsPythonFilesystemCandidates()) {
+            const key = (
+                candidate.executable + '|' + candidate.prefixArgs.join(' ')
+            ).toLowerCase();
+
+            if (seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+
+            const runtime = probePython(candidate.executable, candidate.prefixArgs);
+            if (runtime) {
+                return normalizePythonRuntime(runtime);
+            }
+        }
+
+        return null;
+    };
+
+    let runtime = tryPathCandidates() || tryFilesystemCandidates();
 
     if (!runtime && process.platform === 'win32' && !windowsPathRefreshed) {
         refreshWindowsPath();
-        runtime = tryCurrentPath();
+        runtime = tryPathCandidates() || tryFilesystemCandidates();
     }
 
     pythonRuntimeCache = runtime || null;
@@ -214,7 +355,12 @@ async function ensureRuntime(language, filePath, workspacePath, output) {
     } else if (language === 'python') {
         tool = 'Python';
         component = 'Python';
-        ready = Boolean(findPythonRuntime());
+        const pythonRuntime = findPythonRuntime();
+        ready = Boolean(pythonRuntime);
+
+        if (pythonRuntime) {
+            output.appendLine('[OK] Python interpreter resolved: ' + pythonRuntime.interpreter);
+        }
     } else {
         return true;
     }
@@ -260,7 +406,12 @@ async function ensureRuntime(language, filePath, workspacePath, output) {
     refreshWindowsPath(true);
 
     if (component === 'Python') {
-        ready = Boolean(findPythonRuntime(true));
+        const pythonRuntime = findPythonRuntime(true);
+        ready = Boolean(pythonRuntime);
+
+        if (pythonRuntime) {
+            output.appendLine('[OK] Python interpreter resolved after setup: ' + pythonRuntime.interpreter);
+        }
     } else {
         ready = Boolean(findExecutable(tool, { refreshOnMiss: false }));
     }
