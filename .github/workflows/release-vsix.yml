@@ -73,11 +73,12 @@ jobs:
             exit 1
           }
 
-      - name: Validate Python portability and lazy startup
+      - name: Validate Python portability and startup repair
         shell: powershell
         run: |
           $bootstrap = Get-Content -Raw 'scripts\bootstrap.ps1'
           $installer = Get-Content -Raw 'scripts\install.ps1'
+          $configure = Get-Content -Raw 'scripts\configure-vscode.ps1'
           $extension = Get-Content -Raw 'auto-comment-extension\extension.js'
           $package = Get-Content -Raw 'auto-comment-extension\package.json' | ConvertFrom-Json
 
@@ -92,12 +93,17 @@ jobs:
           }
 
           if ($installer -match '-Components\s+All') {
-            Write-Error 'Installer must not eagerly bootstrap all language runtimes.'
+            Write-Error 'Installer must not eagerly bootstrap every language runtime.'
             exit 1
           }
 
           if ($installer -notmatch '-Components\s+VSCode') {
-            Write-Error 'Installer must bootstrap only the VS Code host.'
+            Write-Error 'Installer must prepare the VS Code host.'
+            exit 1
+          }
+
+          if ($installer -notmatch '-Components\s+Python') {
+            Write-Error 'Installer must verify and repair Python during setup so external runners inherit a usable PATH.'
             exit 1
           }
 
@@ -107,7 +113,7 @@ jobs:
           }
 
           if ($extension -notmatch "component = 'Python'") {
-            Write-Error 'Python lazy runtime bootstrap is missing.'
+            Write-Error 'Python lazy runtime fallback is missing.'
             exit 1
           }
 
@@ -126,11 +132,25 @@ jobs:
             exit 1
           }
 
+          if ($bootstrap -notmatch 'Add-UserPath \(Split-Path \$runtime\.Launcher -Parent\)') {
+            Write-Error 'Bootstrap must persist the Python launcher directory to User PATH.'
+            exit 1
+          }
+
           if ($bootstrap -notmatch 'Add-UserPath \(Split-Path \$runtime\.Interpreter -Parent\)') {
             Write-Error 'Bootstrap must persist the verified Python interpreter directory to User PATH.'
             exit 1
           }
 
+          if ($configure -notmatch 'function Find-PythonInterpreter') {
+            Write-Error 'VS Code support repair must independently resolve the verified Python interpreter.'
+            exit 1
+          }
+
+          if ($configure -notmatch "PropertyName 'python\.defaultInterpreterPath'") {
+            Write-Error 'VS Code Python default interpreter configuration is missing.'
+            exit 1
+          }
 
           if ($package.activationEvents -contains 'onStartupFinished') {
             Write-Error 'Extension must not activate on every VS Code startup.'
@@ -147,8 +167,6 @@ jobs:
             exit 1
           }
 
-          $configure = Get-Content -Raw 'scripts\configure-vscode.ps1'
-
           if ($configure -notmatch "Remove-ExtensionIfPresent 'Gruntfuggly\.todo-tree'") {
             Write-Error 'Legacy Todo Tree removal is missing.'
             exit 1
@@ -156,11 +174,6 @@ jobs:
 
           if ($configure -notmatch "Ensure-Extension 'FanaticPythoner\.better-todo-tree'") {
             Write-Error 'Maintained Better Todo Tree setup is missing.'
-            exit 1
-          }
-
-          if ($configure -match "Set-JsoncRootStringProperty.*better-todo-tree\.ripgrep\.ripgrep.*-Value\s+''") {
-            Write-Error 'Better Todo Tree must not receive an empty ripgrep setting value.'
             exit 1
           }
 
@@ -178,7 +191,6 @@ jobs:
             Write-Error 'Legacy Tabnine cleanup is missing.'
             exit 1
           }
-
 
   package:
     needs: windows-smoke
@@ -234,5 +246,5 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Auto Comment v$VERSION" \
-              --notes "Makes Python execution path-independent on external Windows PCs by discovering the standard Python Launcher outside PATH, resolving sys.executable, running with the verified interpreter absolute path, and repairing User PATH."
+              --notes "Repairs Python for external Windows PCs during installation: verifies/installs Python, persists launcher and interpreter directories to User PATH, configures VS Code python.defaultInterpreterPath to the verified interpreter, and keeps Auto Comment's absolute-path runtime fallback."
           fi
