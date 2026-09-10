@@ -2,7 +2,7 @@
   "name": "auto-comment-after-run",
   "displayName": "Auto Comment After Run",
   "description": "Fast portable C/C++/Python/JavaScript smart build and automatic beginner-friendly Korean learning comments with lazy dependency bootstrap.",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "publisher": "local",
   "license": "MIT",
   "repository": {

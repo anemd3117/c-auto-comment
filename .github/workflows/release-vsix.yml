@@ -111,6 +111,27 @@ jobs:
             exit 1
           }
 
+          if ($extension -notmatch "path\.join\(pythonRoot, 'Launcher', 'py\.exe'\)") {
+            Write-Error 'Extension must discover the standard per-user Python launcher outside PATH.'
+            exit 1
+          }
+
+          if ($extension -notmatch 'executable: runtime\.interpreter') {
+            Write-Error 'Python commands must normalize to the verified interpreter absolute path.'
+            exit 1
+          }
+
+          if ($bootstrap -notmatch "Programs\\Python\\Launcher\\py\.exe") {
+            Write-Error 'Bootstrap must discover the per-user Python launcher outside PATH.'
+            exit 1
+          }
+
+          if ($bootstrap -notmatch 'Add-UserPath \(Split-Path \$runtime\.Interpreter -Parent\)') {
+            Write-Error 'Bootstrap must persist the verified Python interpreter directory to User PATH.'
+            exit 1
+          }
+
+
           if ($package.activationEvents -contains 'onStartupFinished') {
             Write-Error 'Extension must not activate on every VS Code startup.'
             exit 1
@@ -213,5 +234,5 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Auto Comment v$VERSION" \
-              --notes "Fixes the v0.0.13 empty-string PowerShell binding failure and lets Better Todo Tree use its packaged ripgrep by leaving the override unset."
+              --notes "Makes Python execution path-independent on external Windows PCs by discovering the standard Python Launcher outside PATH, resolving sys.executable, running with the verified interpreter absolute path, and repairing User PATH."
           fi
