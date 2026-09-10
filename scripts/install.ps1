@@ -87,16 +87,11 @@ try {
     Write-Host '===================================================='
     Write-Host "[Auto Comment] Portable installer v$version"
     Write-Host '===================================================='
-    Write-Info 'Checking the VS Code host and portable support tools...'
+    Write-Info 'Checking the VS Code host and repairing compatible support extensions...'
 
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Components VSCode
     if ($LASTEXITCODE -ne 0) {
         throw "VS Code bootstrap failed (exit code $LASTEXITCODE)."
-    }
-
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Components Ripgrep
-    if ($LASTEXITCODE -ne 0) {
-        throw "ripgrep bootstrap failed (exit code $LASTEXITCODE)."
     }
 
     Refresh-ProcessPath
@@ -104,12 +99,7 @@ try {
     if (-not $code) { throw 'VS Code CLI could not be resolved after bootstrap.' }
     Write-Ok "VS Code CLI resolved: $code"
 
-    $rg = Join-Path $env:LOCALAPPDATA 'Programs\ripgrep\rg.exe'
-    if (-not (Test-Path $rg)) {
-        throw "Stable ripgrep executable was not found after bootstrap: $rg"
-    }
-
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $configure -CodePath $code -RipgrepPath $rg
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $configure -CodePath $code
     if ($LASTEXITCODE -ne 0) {
         throw "VS Code support repair failed (exit code $LASTEXITCODE)."
     }
