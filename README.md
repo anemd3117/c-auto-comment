@@ -2,46 +2,39 @@
 
 Portable VS Code tooling that validates or runs supported source files and adds beginner-friendly Korean learning comments automatically.
 
-## v0.0.15
+## v0.0.16
 
-This release fixes Python Auto Comment failures on external Windows PCs where Python is installed but the launcher/interpreter is not available through PATH.
+This release fixes external-PC cases where Python is installed but VS Code or another runner still reports that Python is not installed or is not available on PATH.
 
-### Why this change was necessary
+### Python repair strategy
 
-Some external Windows PCs have a working Python installation such as `%LOCALAPPDATA%\Programs\Python\Launcher\py.exe`, while `py`, `python`, and `python3` are missing from the VS Code extension host PATH. The previous runtime resolver could therefore report Python as missing even though Python itself worked from an absolute path.
+The installer now verifies Python during setup instead of waiting for first use.
 
-v0.0.15 now discovers those installed files directly and verifies the real interpreter with `sys.executable`.
+- discovers the standard per-user Python Launcher outside PATH
+- discovers installed `python.exe` runtimes and validates them with `sys.executable`
+- installs Python through the Python Install Manager only when no working runtime exists
+- permanently adds both the Python launcher directory and verified interpreter directory to User PATH
+- configures VS Code `python.defaultInterpreterPath` to the verified absolute `python.exe` path
+- Auto Comment itself continues to execute Python through the verified absolute interpreter path
+- a full VS Code restart is required after setup so existing extension-host and terminal processes inherit the repaired PATH
 
-### Previous Todo Tree compatibility work
+This covers both Auto Comment and other VS Code components that still invoke `python` through PATH.
 
-VS Code 1.122 changed its internal ripgrep layout. The legacy `Gruntfuggly.todo-tree` extension still relies on VS Code internals and can fail with:
+### Todo Tree compatibility
 
-```text
-Todo-Tree: Failed to find vscode-ripgrep
+The installer removes the legacy `Gruntfuggly.todo-tree` extension and installs `FanaticPythoner.better-todo-tree`, which uses its packaged ripgrep by default.
+
+## Existing installation
+
+```powershell
+cd C:\Users\user\c-auto-comment
+git pull origin main
+.\install-extension.bat
 ```
 
-Installing `rg.exe` system-wide or repairing PATH does not reliably solve that upstream extension bug.
+After installation, fully close all VS Code windows and reopen VS Code.
 
-### What v0.0.15 does
-
-- removes `Gruntfuggly.todo-tree` when present
-- installs the actively maintained `FanaticPythoner.better-todo-tree`
-- uses Better Todo Tree's packaged ripgrep binary
-- removes the old external ripgrep override from VS Code settings
-- removes any `better-todo-tree.ripgrep.ripgrep` override so Better Todo Tree uses its packaged/default ripgrep automatically
-- no longer writes an empty ripgrep path into VS Code settings
-- no longer installs or repairs external ripgrep just for Todo Tree
-- discovers `%LOCALAPPDATA%\Programs\Python\Launcher\py.exe` even when it is not on PATH
-- scans normal per-user and Program Files Python installation directories
-- validates each candidate by executing Python and reading `sys.executable`
-- normalizes compile/run commands to the verified interpreter absolute path instead of depending on `py`/`python` command names
-- repairs User PATH with both the discovered launcher directory and interpreter directory
-- keeps Microsoft Python and Pylance setup
-- keeps cleanup of unsupported Tabnine and legacy IntelliCode extensions
-- keeps the lazy GCC / Python / Node runtime bootstrap
-- keeps path-independent VS Code and debugger configuration
-
-## One-click installation on Windows
+## Fresh installation
 
 ```powershell
 git clone https://github.com/anemd3117/c-auto-comment.git
@@ -49,42 +42,9 @@ cd c-auto-comment
 .\install-extension.bat
 ```
 
-For an existing clone:
+## Runtime behavior
 
-```powershell
-git pull origin main
-.\install-extension.bat
-```
-
-The installer now performs:
-
-```text
-VS Code host
-  -> detect/install VS Code
-  -> remove broken legacy Todo Tree
-  -> install Better Todo Tree
-  -> use Better Todo Tree packaged ripgrep
-  -> install Python + Pylance VS Code support if missing
-  -> clean unsupported legacy AI extensions
-  -> download the matching prebuilt Auto Comment VSIX
-  -> install and verify the exact extension version
-```
-
-Language runtimes remain lazy:
-
-```text
-C/C++ first use
-  -> detect GCC/G++
-  -> install MSYS2 UCRT64 toolchain only if missing
-
-Python first use
-  -> validate pymanager / py / python / python3
-  -> install Python only if no working runtime exists
-
-JavaScript first use
-  -> detect Node.js
-  -> install Node.js LTS only if missing
-```
+C/C++ and JavaScript remain lazy. GCC/G++ or Node.js are prepared only when their language is first used. Python is now verified during installer setup because external VS Code runners may require a working PATH before Auto Comment activates.
 
 ## Extension commands
 
