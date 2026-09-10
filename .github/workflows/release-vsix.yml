@@ -111,7 +111,7 @@ jobs:
             exit 1
           }
 
-          if ($extension -notmatch "Programs', 'Python', 'Launcher', 'py\.exe'") {
+          if ($extension -notmatch "path\.join\(pythonRoot, 'Launcher', 'py\.exe'\)") {
             Write-Error 'Extension must discover the standard per-user Python launcher outside PATH.'
             exit 1
           }
