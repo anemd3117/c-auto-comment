@@ -2,14 +2,14 @@
 
 Portable VS Code extension for C/C++, Python, and JavaScript learning workflows.
 
-Version 0.0.12 keeps the fast lazy runtime detection from v0.0.11 and adds external-PC setup repairs:
+Version 0.0.13 fixes the recurring Todo Tree / vscode-ripgrep problem on newer VS Code versions:
 
-- portable ripgrep discovery and stable user path
-- Todo Tree setup using `todo-tree.ripgrep.ripgrep`
-- Python and Pylance VS Code support setup
-- cleanup of unsupported Tabnine / legacy IntelliCode extensions
-- no fixed MSYS2 user-machine debugger path
-- English UTF-8 operational logs with Korean generated learning comments
+- removes the legacy Gruntfuggly Todo Tree extension
+- installs maintained Better Todo Tree
+- uses Better Todo Tree's packaged ripgrep instead of relying on VS Code internals or shell PATH
+- keeps Python + Pylance support repair
+- keeps lazy runtime discovery for GCC, Python, and Node.js
+- keeps path-independent setup and UTF-8 operational logs
 
 Commands:
 
