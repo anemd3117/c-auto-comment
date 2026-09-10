@@ -61,7 +61,9 @@ jobs:
             'scripts\configure-vscode.ps1',
             'scripts\smart_build.ps1',
             'auto-comment-extension\bootstrap.ps1',
-            'auto-comment-extension\extension.js'
+            'auto-comment-extension\extension.js',
+            'auto-comment-extension\entry.js',
+            'auto-comment-extension\localization.js'
           )
           $bad = Select-String -Path $targets -Pattern 'C:\\Users\\user|C:\\msys64' -SimpleMatch:$false
           if ($bad) {
@@ -73,13 +75,15 @@ jobs:
             exit 1
           }
 
-      - name: Validate Python portability and startup repair
+      - name: Validate portability, startup repair, and multilingual comments
         shell: powershell
         run: |
           $bootstrap = Get-Content -Raw 'scripts\bootstrap.ps1'
           $installer = Get-Content -Raw 'scripts\install.ps1'
           $configure = Get-Content -Raw 'scripts\configure-vscode.ps1'
           $extension = Get-Content -Raw 'auto-comment-extension\extension.js'
+          $entry = Get-Content -Raw 'auto-comment-extension\entry.js'
+          $localization = Get-Content -Raw 'auto-comment-extension\localization.js'
           $package = Get-Content -Raw 'auto-comment-extension\package.json' | ConvertFrom-Json
 
           if ($bootstrap -notmatch "ValidateSet\('All', 'Toolchain', 'Node', 'VSCode', 'Python', 'Ripgrep'\)") {
@@ -192,6 +196,57 @@ jobs:
             exit 1
           }
 
+          if ($package.main -ne './entry.js') {
+            Write-Error 'Multilingual entry point must be the extension main module.'
+            exit 1
+          }
+
+          if ($package.activationEvents -notcontains 'onCommand:autoCommentAfterRun.changeCommentLanguage') {
+            Write-Error 'Change Comment Language command activation is missing.'
+            exit 1
+          }
+
+          if ($package.activationEvents -notcontains 'onCommand:autoCommentAfterRun.resetCommentLanguage') {
+            Write-Error 'Reset Comment Language command activation is missing.'
+            exit 1
+          }
+
+          if ($entry -notmatch 'globalState\.get\(LANGUAGE_STATE_KEY\)') {
+            Write-Error 'First-run language preference must be read from VS Code globalState.'
+            exit 1
+          }
+
+          if ($entry -notmatch 'globalState\.update\(LANGUAGE_STATE_KEY') {
+            Write-Error 'Selected comment language must persist in VS Code globalState.'
+            exit 1
+          }
+
+          if ($entry -notmatch 'showQuickPick') {
+            Write-Error 'First-run comment language picker is missing.'
+            exit 1
+          }
+
+          if ($entry -notmatch 'Other / Custom language or locale') {
+            Write-Error 'Custom BCP 47 locale selection is missing.'
+            exit 1
+          }
+
+          if ($entry -notmatch 'translateGeneratedComment') {
+            Write-Error 'Generated comment translation hook is missing.'
+            exit 1
+          }
+
+          $requiredLocales = @(
+            'ko-KR','en-US','ja-JP','zh-CN','zh-TW','fr-FR','de-DE',
+            'es-MX','pt-BR','ru-RU','ar-SA','hi-IN','vi-VN'
+          )
+          foreach ($locale in $requiredLocales) {
+            if ($localization -notmatch [Regex]::Escape("'$locale'")) {
+              Write-Error "Required comment locale is missing: $locale"
+              exit 1
+            }
+          }
+
   package:
     needs: windows-smoke
     runs-on: ubuntu-latest
@@ -218,7 +273,10 @@ jobs:
 
       - name: Validate extension JavaScript
         shell: bash
-        run: node --check extension.js
+        run: |
+          node --check extension.js
+          node --check entry.js
+          node --check localization.js
 
       - name: Package VSIX
         shell: bash
@@ -246,5 +304,5 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Auto Comment v$VERSION" \
-              --notes "Repairs Python for external Windows PCs during installation: verifies/installs Python, persists launcher and interpreter directories to User PATH, configures VS Code python.defaultInterpreterPath to the verified interpreter, and keeps Auto Comment's absolute-path runtime fallback."
+              --notes "Adds a first-run persistent comment-language picker, multilingual generated learning comments, change/reset language commands, BCP 47 custom locale input, and keeps the external-PC Python/PATH repairs from v0.0.16."
           fi
